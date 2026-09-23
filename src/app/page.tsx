@@ -88,19 +88,63 @@ export default function Home() {
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizFilter, setQuizFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("yt-study-subjects");
-      if (saved) setSubjects(JSON.parse(saved));
-    } catch {}
+    fetch("/api/subjects")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setSubjects(data);
+      })
+      .catch(() => {
+        const saved = localStorage.getItem("yt-study-subjects");
+        if (saved) setSubjects(JSON.parse(saved));
+      });
+
+    const adminStatus = localStorage.getItem("isAdmin");
+    if (adminStatus === "true") setIsAdmin(true);
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("yt-study-subjects", JSON.stringify(subjects));
-    } catch {}
+    localStorage.setItem("yt-study-subjects", JSON.stringify(subjects));
   }, [subjects]);
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoginError("");
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: loginPassword }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsAdmin(true);
+        setShowLogin(false);
+        setLoginPassword("");
+        localStorage.setItem("isAdmin", "true");
+        localStorage.setItem("adminToken", loginPassword);
+      } else {
+        setLoginError("Invalid password");
+      }
+    } catch {
+      setLoginError("Login failed");
+    }
+  }
+
+  function handleLogout() {
+    setIsAdmin(false);
+    localStorage.removeItem("isAdmin");
+    localStorage.removeItem("adminToken");
+  }
+
+  function getAdminToken() {
+    return localStorage.getItem("adminToken") || "";
+  }
 
   const activeSubject = subjects.find((s) => s.id === activeSubjectId) || null;
   const activeVideo = activeSubject?.videos.find((v) => v.videoId === activeVideoId) || null;
@@ -123,6 +167,13 @@ export default function Home() {
     setActiveSubjectId(newSubject.id);
     setNewSubjectName("");
     setShowNewSubject(false);
+    if (isAdmin) {
+      fetch("/api/subjects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
+        body: JSON.stringify(newSubject),
+      });
+    }
   }
 
   function deleteSubject(id: string) {
@@ -130,6 +181,13 @@ export default function Home() {
     if (activeSubjectId === id) {
       setActiveSubjectId(null);
       setActiveVideoId(null);
+    }
+    if (isAdmin) {
+      fetch("/api/subjects", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
+        body: JSON.stringify({ id }),
+      });
     }
   }
 
@@ -172,7 +230,11 @@ export default function Home() {
           setPlaylistProgress({ current: i + 1, total: videos.length, title: data.playlist.title });
         }
         if (newVideos.length > 0) {
-          setSubjects((prev) => prev.map((s) => (s.id === subjectId ? { ...s, videos: [...s.videos, ...newVideos] } : s)));
+          setSubjects((prev) => {
+            const updated = prev.map((s) => (s.id === subjectId ? { ...s, videos: [...s.videos, ...newVideos] } : s));
+            syncToApi(updated.find((s) => s.id === subjectId));
+            return updated;
+          });
         }
         setPlaylistProgress(null);
         setUrl("");
@@ -183,7 +245,11 @@ export default function Home() {
           thumbnailUrl: data.videoInfo.thumbnailUrl,
           studyPlan: data.studyPlan,
         };
-        setSubjects((prev) => prev.map((s) => (s.id === subjectId ? { ...s, videos: [...s.videos, newVideo] } : s)));
+        setSubjects((prev) => {
+          const updated = prev.map((s) => (s.id === subjectId ? { ...s, videos: [...s.videos, newVideo] } : s));
+          syncToApi(updated.find((s) => s.id === subjectId));
+          return updated;
+        });
         setActiveVideoId(newVideo.videoId);
         setUrl("");
       }
@@ -194,6 +260,15 @@ export default function Home() {
       setLoading(false);
       setAddingToSubject(null);
     }
+  }
+
+  function syncToApi(subject: Subject | undefined) {
+    if (!isAdmin || !subject) return;
+    fetch("/api/subjects", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
+      body: JSON.stringify(subject),
+    });
   }
 
   async function generateStudyPlanForVideo(subjectId: string, videoId: string) {
@@ -223,12 +298,14 @@ export default function Home() {
   }
 
   function removeVideo(subjectId: string, videoId: string) {
-    setSubjects((prev) =>
-      prev.map((s) => {
+    setSubjects((prev) => {
+      const updated = prev.map((s) => {
         if (s.id !== subjectId) return s;
         return { ...s, videos: s.videos.filter((v) => v.videoId !== videoId) };
-      })
-    );
+      });
+      syncToApi(updated.find((s) => s.id === subjectId));
+      return updated;
+    });
     if (activeVideoId === videoId) setActiveVideoId(null);
   }
 
@@ -271,8 +348,20 @@ export default function Home() {
             </svg>
             <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Study Planner</h1>
           </div>
-          <div className="text-sm text-zinc-500 dark:text-zinc-400">
-            {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">
+              {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
+            </span>
+            {isAdmin ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full">Admin</span>
+                <button onClick={handleLogout} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">Logout</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowLogin(true)} className="text-sm bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
+                Admin Login
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -282,9 +371,11 @@ export default function Home() {
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Subjects</h2>
-              <button onClick={() => setShowNewSubject(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-              </button>
+              {isAdmin && (
+                <button onClick={() => setShowNewSubject(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                </button>
+              )}
             </div>
             {showNewSubject && (
               <div className="mb-4 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900">
@@ -304,9 +395,11 @@ export default function Home() {
                     <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50 truncate">{subject.name}</p>
                     <p className="text-[10px] text-zinc-400">{subject.videos.length} videos</p>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); deleteSubject(subject.id); }} className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-900 text-red-500 transition-opacity">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                  </button>
+                  {isAdmin && (
+                    <button onClick={(e) => { e.stopPropagation(); deleteSubject(subject.id); }} className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-900 text-red-500 transition-opacity">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -327,15 +420,17 @@ export default function Home() {
                 <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{activeSubject.name}</h2>
               </div>
 
-              <div className="flex gap-3">
-                <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste YouTube video or playlist URL..." className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm" onKeyDown={(e) => e.key === "Enter" && addVideoToSubject(activeSubject.id)} />
-                <button onClick={() => addVideoToSubject(activeSubject.id)} disabled={loading || !url.trim()} className="rounded-lg bg-red-600 px-5 py-3 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
-                  {loading && addingToSubject === activeSubject.id ? "Adding..." : "Add"}
-                </button>
-                <button onClick={() => setShowSchedule(!showSchedule)} className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors ${showSchedule ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-700"}`}>
-                  Schedule
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="flex gap-3">
+                  <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste YouTube video or playlist URL..." className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm" onKeyDown={(e) => e.key === "Enter" && addVideoToSubject(activeSubject.id)} />
+                  <button onClick={() => addVideoToSubject(activeSubject.id)} disabled={loading || !url.trim()} className="rounded-lg bg-red-600 px-5 py-3 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
+                    {loading && addingToSubject === activeSubject.id ? "Adding..." : "Add"}
+                  </button>
+                  <button onClick={() => setShowSchedule(!showSchedule)} className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors ${showSchedule ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-700"}`}>
+                    Schedule
+                  </button>
+                </div>
+              )}
 
               {playlistProgress && (
                 <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950 px-4 py-3">
@@ -389,16 +484,18 @@ export default function Home() {
                           <p className="text-xs text-zinc-400 mt-1">Click to generate study plan</p>
                         )}
                       </div>
-                      <button onClick={(e) => { e.stopPropagation(); removeVideo(activeSubject.id, video.videoId); }} className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-100 dark:hover:bg-red-900 text-red-500 transition-opacity">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                      </button>
+                      {isAdmin && (
+                        <button onClick={(e) => { e.stopPropagation(); removeVideo(activeSubject.id, video.videoId); }} className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-100 dark:hover:bg-red-900 text-red-500 transition-opacity">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
                   <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                  <p className="text-sm">No videos yet. Paste a YouTube URL above.</p>
+                  <p className="text-sm">{isAdmin ? "No videos yet. Paste a YouTube URL above." : "No videos yet. Admin hasn't added any content."}</p>
                 </div>
               )}
             </div>
@@ -570,6 +667,33 @@ export default function Home() {
           ) : null}
         </main>
       </div>
+
+      {showLogin && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-4">Admin Login</h3>
+            <form onSubmit={handleLogin}>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="Enter admin password"
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 text-sm mb-3"
+                autoFocus
+              />
+              {loginError && <p className="text-xs text-red-500 mb-3">{loginError}</p>}
+              <div className="flex gap-3">
+                <button type="submit" className="flex-1 bg-red-600 text-white py-2.5 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                  Login
+                </button>
+                <button type="button" onClick={() => { setShowLogin(false); setLoginPassword(""); setLoginError(""); }} className="flex-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 py-2.5 rounded-lg font-medium hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-3">
         <p className="text-center text-xs text-zinc-400">Powered by AI · Built for SSC Aspirants</p>
