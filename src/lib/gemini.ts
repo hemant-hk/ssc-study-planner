@@ -1,5 +1,14 @@
 import type { YouTubeVideoInfo } from "./youtube";
 
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  explanation: string;
+  difficulty: "easy" | "medium" | "hard";
+  year?: string;
+}
+
 export interface StudyPlan {
   summary: string;
   keyTopics: string[];
@@ -7,6 +16,7 @@ export interface StudyPlan {
   revisionPoints: string[];
   difficulty: string;
   estimatedStudyTime: string;
+  quiz: QuizQuestion[];
 }
 
 export interface StudyChapter {
@@ -29,7 +39,7 @@ export async function generateStudyPlan(
       ? `Video chapters:\n${videoInfo.chapters.map((c) => `- ${c.timestamp} ${c.title}`).join("\n")}`
       : "No chapters found in the video description.";
 
-  const prompt = `You are an expert study planner. Analyze this YouTube video and create a detailed study plan.
+  const prompt = `You are an expert study planner for SSC CGL exam preparation. Analyze this YouTube video and create a detailed study plan WITH quiz questions.
 
 Video Title: ${videoInfo.title}
 Video Author: ${videoInfo.author}
@@ -52,10 +62,29 @@ Create a comprehensive study plan in the following JSON format (respond with ONL
   ],
   "revisionPoints": ["point1", "point2", "point3"],
   "difficulty": "Beginner|Intermediate|Advanced",
-  "estimatedStudyTime": "X hours Y minutes"
+  "estimatedStudyTime": "X hours Y minutes",
+  "quiz": [
+    {
+      "question": "SSC CGL style question based on the video topic",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 0,
+      "explanation": "Detailed explanation of the correct answer",
+      "difficulty": "easy",
+      "year": "2023"
+    }
+  ]
 }
 
-If there are no chapters in the video, create logical chapters based on the content description (aim for 4-8 chapters). Make the notes detailed and educational.`;
+IMPORTANT QUIZ REQUIREMENTS:
+- Generate15quiz questions based on the video topic
+- Questions should be similar to SSC CGL previous year questions
+- Include a mix of difficulties:5easy,5medium,5hard
+- Each question must have4options with1correct answer (correctAnswer is0-indexed)
+- Include the SSC CGL year the question is similar to (e.g., "2023", "2022", "2021")
+- Add a detailed explanation for each answer
+- Questions should test factual knowledge, conceptual understanding, and application
+
+If there are no chapters in the video, create logical chapters based on the content description (aim for4-8chapters). Make the notes detailed and educational.`;
 
   let res;
   let lastError;
@@ -70,7 +99,7 @@ If there are no chapters in the video, create logical chapters based on the cont
         model: "openai/gpt-oss-120b",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 4096,
+        max_tokens: 8000,
       }),
     });
 
@@ -99,5 +128,7 @@ If there are no chapters in the video, create logical chapters based on the cont
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("Invalid JSON response from AI");
 
-  return JSON.parse(jsonMatch[0]) as StudyPlan;
+  const parsed = JSON.parse(jsonMatch[0]) as StudyPlan;
+  if (!parsed.quiz) parsed.quiz = [];
+  return parsed;
 }

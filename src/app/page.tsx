@@ -11,6 +11,15 @@ interface VideoInfo {
   chapters: { title: string; timestamp: string; startSeconds: number }[];
 }
 
+interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  explanation: string;
+  difficulty: "easy" | "medium" | "hard";
+  year?: string;
+}
+
 interface StudyPlan {
   summary: string;
   keyTopics: string[];
@@ -18,6 +27,7 @@ interface StudyPlan {
   revisionPoints: string[];
   difficulty: string;
   estimatedStudyTime: string;
+  quiz: QuizQuestion[];
 }
 
 interface SubjectVideo {
@@ -57,6 +67,10 @@ export default function Home() {
   const [addingToSubject, setAddingToSubject] = useState<string | null>(null);
   const [playlistProgress, setPlaylistProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [quizFilter, setQuizFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
 
   useEffect(() => {
     try {
@@ -489,6 +503,121 @@ export default function Home() {
                       ))}
                     </ul>
                   </div>
+
+                  {activeVideo.studyPlan?.quiz && activeVideo.studyPlan?.quiz.length > 0 && (
+                    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+                          <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          </svg>
+                          SSC CGL Quiz ({activeVideo.studyPlan?.quiz.length} questions)
+                        </h3>
+                        <div className="flex gap-2">
+                          {(["all", "easy", "medium", "hard"] as const).map((f) => (
+                            <button
+                              key={f}
+                              onClick={() => { setQuizFilter(f); setQuizAnswers({}); setQuizSubmitted(false); }}
+                              className={`text-xs px-3 py-1 rounded-full transition-colors ${
+                                quizFilter === f
+                                  ? f === "easy" ? "bg-green-500 text-white" : f === "medium" ? "bg-yellow-500 text-white" : f === "hard" ? "bg-red-500 text-white" : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
+                                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                              }`}
+                            >
+                              {f.charAt(0).toUpperCase() + f.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {quizSubmitted && (
+                        <div className={`mb-4 p-4 rounded-lg ${
+                          getQuizScore(activeVideo.studyPlan?.quiz, quizAnswers, quizFilter) >= 70
+                            ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800"
+                            : "bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800"
+                        }`}>
+                          <p className="font-semibold text-lg">
+                            Score: {getQuizScore(activeVideo.studyPlan?.quiz, quizAnswers, quizFilter)}%
+                          </p>
+                          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                            {getQuizCorrect(activeVideo.studyPlan?.quiz, quizAnswers, quizFilter)} / {getFilteredQuiz(activeVideo.studyPlan?.quiz, quizFilter).length} correct
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="space-y-4">
+                        {getFilteredQuiz(activeVideo.studyPlan?.quiz || [], quizFilter).map((q, i) => {
+                          const globalIdx = (activeVideo.studyPlan?.quiz || []).indexOf(q);
+                          const selected = quizAnswers[globalIdx];
+                          const isCorrect = selected === q.correctAnswer;
+                          const diffColor = q.difficulty === "easy" ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" : q.difficulty === "medium" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" : "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300";
+
+                          return (
+                            <div key={globalIdx} className="p-4 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
+                              <div className="flex items-start gap-3 mb-3">
+                                <span className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${diffColor}`}>{q.difficulty}</span>
+                                    {q.year && <span className="text-[10px] text-zinc-400">Similar to {q.year}</span>}
+                                  </div>
+                                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{q.question}</p>
+                                </div>
+                              </div>
+                              <div className="ml-9 space-y-2">
+                                {q.options.map((opt, j) => {
+                                  const isSelected = selected === j;
+                                  const showResult = quizSubmitted;
+                                  let optClass = "border-zinc-200 dark:border-zinc-600 hover:border-zinc-300 dark:hover:border-zinc-500";
+                                  if (showResult && j === q.correctAnswer) optClass = "border-green-500 bg-green-50 dark:bg-green-950";
+                                  else if (showResult && isSelected && j !== q.correctAnswer) optClass = "border-red-500 bg-red-50 dark:bg-red-950";
+                                  else if (isSelected) optClass = "border-purple-500 bg-purple-50 dark:bg-purple-950";
+
+                                  return (
+                                    <button
+                                      key={j}
+                                      onClick={() => !quizSubmitted && setQuizAnswers({ ...quizAnswers, [globalIdx]: j })}
+                                      disabled={quizSubmitted}
+                                      className={`w-full text-left p-3 rounded-lg border text-sm transition-colors ${optClass} ${quizSubmitted ? "cursor-default" : "cursor-pointer"}`}
+                                    >
+                                      <span className="font-medium text-zinc-500 mr-2">{String.fromCharCode(65 + j)}.</span>
+                                      {opt}
+                                      {showResult && j === q.correctAnswer && <span className="ml-2 text-green-600">✓</span>}
+                                      {showResult && isSelected && j !== q.correctAnswer && <span className="ml-2 text-red-600">✗</span>}
+                                    </button>
+                                  );
+                                })}
+                                {quizSubmitted && (
+                                  <div className="mt-2 p-3 rounded bg-zinc-100 dark:bg-zinc-700">
+                                    <p className="text-xs text-zinc-600 dark:text-zinc-400"><strong>Explanation:</strong> {q.explanation}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mt-4 flex gap-3">
+                        {!quizSubmitted ? (
+                          <button
+                            onClick={() => setQuizSubmitted(true)}
+                            disabled={Object.keys(quizAnswers).length < getFilteredQuiz(activeVideo.studyPlan?.quiz, quizFilter).length}
+                            className="px-6 py-2.5 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Submit Quiz ({Object.keys(quizAnswers).length}/{getFilteredQuiz(activeVideo.studyPlan?.quiz, quizFilter).length} answered)
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => { setQuizAnswers({}); setQuizSubmitted(false); }}
+                            className="px-6 py-2.5 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                          >
+                            Retry Quiz
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -580,4 +709,24 @@ function getTimeDiff(start: string, end: string): string {
   const h = Math.floor(diff / 60);
   const m = diff % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function getFilteredQuiz(quiz: QuizQuestion[], filter: string): QuizQuestion[] {
+  if (filter === "all") return quiz;
+  return quiz.filter((q) => q.difficulty === filter);
+}
+
+function getQuizCorrect(quiz: QuizQuestion[], answers: Record<number, number>, filter: string): number {
+  const filtered = getFilteredQuiz(quiz, filter);
+  return filtered.filter((q, i) => {
+    const globalIdx = quiz.indexOf(q);
+    return answers[globalIdx] === q.correctAnswer;
+  }).length;
+}
+
+function getQuizScore(quiz: QuizQuestion[], answers: Record<number, number>, filter: string): number {
+  const filtered = getFilteredQuiz(quiz, filter);
+  if (filtered.length === 0) return 0;
+  const correct = getQuizCorrect(quiz, answers, filter);
+  return Math.round((correct / filtered.length) * 100);
 }
