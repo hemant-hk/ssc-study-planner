@@ -67,7 +67,7 @@ If there are no chapters in the video, create logical chapters based on the cont
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "openai/gpt-oss-120b",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
         max_tokens: 4096,
