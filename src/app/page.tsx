@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import DoubtDrawer from "@/components/DoubtDrawer";
+import DiscussionThread from "@/components/DiscussionThread";
 
 interface VideoInfo {
   videoId: string;
@@ -578,18 +580,29 @@ export default function Home() {
               <div className="space-y-2">
                 {sectionBtn("video", "Video Player", <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>)}
                 {openSections.video && (
-                  <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
-                    <div className="aspect-video w-full">
-                      <iframe src={`https://www.youtube.com/embed/${activeVideo.videoId}?start=${activeChapter !== null ? getChapterSeconds(activeVideo.studyPlan.chapters[activeChapter].timestamp) : 0}`} title={activeVideo.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full" />
-                    </div>
-                    <div className="bg-white dark:bg-zinc-900 px-5 py-3 flex items-center justify-between">
-                      <div className="flex gap-2">
-                        <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full">{activeVideo.studyPlan.difficulty}</span>
-                        <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full">{activeVideo.studyPlan.estimatedStudyTime}</span>
+                  <div className="flex flex-col lg:flex-row gap-3">
+                    <div className="flex-1 min-w-0 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
+                      <div className="aspect-video w-full">
+                        <iframe src={`https://www.youtube.com/embed/${activeVideo.videoId}?start=${activeChapter !== null ? getChapterSeconds(activeVideo.studyPlan.chapters[activeChapter].timestamp) : 0}`} title={activeVideo.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full" />
                       </div>
+                      <div className="bg-white dark:bg-zinc-900 px-5 py-3 flex items-center justify-between">
+                        <div className="flex gap-2">
+                          <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full">{activeVideo.studyPlan.difficulty}</span>
+                          <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full">{activeVideo.studyPlan.estimatedStudyTime}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="lg:w-80 xl:w-96 shrink-0">
+                      <DoubtDrawer
+                        videoTitle={activeVideo.title}
+                        subject={activeSubject.name}
+                        topicSummary={activeVideo.studyPlan.summary}
+                      />
                     </div>
                   </div>
                 )}
+
+                <DiscussionThread videoId={activeVideo.videoId} />
 
                 {sectionBtn("summary", "Summary", <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>)}
                 {openSections.summary && (
