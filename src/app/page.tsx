@@ -21,6 +21,20 @@ interface QuizQuestion {
   exam?: string;
 }
 
+interface ImportantNote {
+  topic: string;
+  frequency: string;
+  notes: string;
+  exams: string[];
+}
+
+interface PredictedTopic {
+  topic: string;
+  probability: string;
+  reason: string;
+  preparationTip: string;
+}
+
 interface StudyPlan {
   summary: string;
   keyTopics: string[];
@@ -29,6 +43,8 @@ interface StudyPlan {
   difficulty: string;
   estimatedStudyTime: string;
   quiz: QuizQuestion[];
+  lastYearNotes: ImportantNote[];
+  predictedTopics: PredictedTopic[];
 }
 
 interface SubjectVideo {
@@ -504,6 +520,60 @@ export default function Home() {
                       ))}
                     </ul>
                   </div>
+
+                  {activeVideo.studyPlan?.lastYearNotes && activeVideo.studyPlan.lastYearNotes.length > 0 && (
+                    <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950 dark:to-orange-950 p-5">
+                      <h3 className="font-semibold text-zinc-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Last Year Important Notes (SSC Exams2020-2025)
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {activeVideo.studyPlan.lastYearNotes.map((note, i) => (
+                          <div key={i} className="p-4 rounded-lg bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-medium text-sm text-zinc-900 dark:text-zinc-50">{note.topic}</h4>
+                              <span className="text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">{note.frequency}</span>
+                            </div>
+                            <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-2">{note.notes}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {note.exams.map((exam, j) => (
+                                <span key={j} className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5 rounded">{exam}</span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeVideo.studyPlan?.predictedTopics && activeVideo.studyPlan.predictedTopics.length > 0 && (
+                    <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950 p-5">
+                      <h3 className="font-semibold text-zinc-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                        Predicted Important Topics for2025-2026SSC Exams
+                      </h3>
+                      <div className="space-y-3">
+                        {activeVideo.studyPlan.predictedTopics.map((topic, i) => {
+                          const probColor = topic.probability === "High" ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" : topic.probability === "Medium" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400";
+                          return (
+                            <div key={i} className="p-4 rounded-lg bg-white dark:bg-zinc-900 border border-purple-200 dark:border-purple-800">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                                <h4 className="font-medium text-sm text-zinc-900 dark:text-zinc-50 flex-1">{topic.topic}</h4>
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full ${probColor}`}>{topic.probability}</span>
+                              </div>
+                              <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-1 ml-9"><strong>Why:</strong> {topic.reason}</p>
+                              <p className="text-xs text-purple-600 dark:text-purple-400 ml-9"><strong>Tip:</strong> {topic.preparationTip}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {activeVideo.studyPlan?.quiz && activeVideo.studyPlan?.quiz.length > 0 && (
                     <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">

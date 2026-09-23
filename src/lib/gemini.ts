@@ -18,6 +18,22 @@ export interface StudyPlan {
   difficulty: string;
   estimatedStudyTime: string;
   quiz: QuizQuestion[];
+  lastYearNotes: ImportantNote[];
+  predictedTopics: PredictedTopic[];
+}
+
+export interface ImportantNote {
+  topic: string;
+  frequency: string;
+  notes: string;
+  exams: string[];
+}
+
+export interface PredictedTopic {
+  topic: string;
+  probability: string;
+  reason: string;
+  preparationTip: string;
 }
 
 export interface StudyChapter {
@@ -109,8 +125,38 @@ Respond with ONLY valid JSON (no markdown, no code blocks):
   ],
   "revisionPoints": ["point1", "point2", "point3"],
   "difficulty": "Beginner|Intermediate|Advanced",
-  "estimatedStudyTime": "X hours Y minutes"
+  "estimatedStudyTime": "X hours Y minutes",
+  "lastYearNotes": [
+    {
+      "topic": "Topic name",
+      "frequency": "Asked X times in last5years",
+      "notes": "Key facts and notes that appeared in exams",
+      "exams": ["SSC CGL2023", "SSC CHSL2022"]
+    }
+  ],
+  "predictedTopics": [
+    {
+      "topic": "Topic name",
+      "probability": "High|Medium|Low",
+      "reason": "Why this is likely to be asked",
+      "preparationTip": "How to prepare for this topic"
+    }
+  ]
 }
+
+LAST YEAR NOTES REQUIREMENTS:
+- Analyze which topics from this video are most frequently asked in SSC exams
+- List8-12most important topics with their exam frequency
+- Include specific facts, dates, names that appeared in previous year papers
+- Mention which SSC exams asked these questions (CGL, CHSL, CPO, MTS etc.)
+- Focus on2020-2025exam trends
+
+PREDICTED TOPICS REQUIREMENTS:
+- Predict8-10topics most likely to appear in upcoming2025-2026SSC exams
+- Based on patterns from last5years of SSC exams
+- Include probability (High/Medium/Low) based on frequency analysis
+- Give specific preparation tips for each predicted topic
+- Explain reasoning behind each prediction
 
 If there are no chapters, create4-8logical chapters. Make notes detailed and educational.`;
 
@@ -125,6 +171,8 @@ If there are no chapters, create4-8logical chapters. Make notes detailed and edu
     difficulty: studyData.difficulty || "Intermediate",
     estimatedStudyTime: studyData.estimatedStudyTime || "1 hour",
     quiz: [],
+    lastYearNotes: studyData.lastYearNotes || [],
+    predictedTopics: studyData.predictedTopics || [],
   };
 
   const quizTopics = studyPlan.keyTopics.join(", ");
