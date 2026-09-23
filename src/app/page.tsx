@@ -90,6 +90,7 @@ export default function Home() {
   const [quizFilter, setQuizFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
 
@@ -343,6 +344,11 @@ export default function Home() {
       <header className="w-full border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <button onClick={() => setShowSidebar(!showSidebar)} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+              <svg className="w-6 h-6 text-zinc-700 dark:text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
             <svg className="w-8 h-8 text-red-600" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
             </svg>
@@ -370,16 +376,25 @@ export default function Home() {
       </header>
 
       <div className="flex-1 flex max-w-7xl mx-auto w-full overflow-hidden">
-        <aside className="w-64 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-y-auto flex-shrink-0">
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Subjects</h2>
-              {isAdmin && (
-                <button onClick={() => setShowNewSubject(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                </button>
-              )}
-            </div>
+        {showSidebar && (
+          <>
+            <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setShowSidebar(false)} />
+            <aside className="fixed lg:static inset-y-0 left-0 z-50 w-64 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-y-auto flex-shrink-0">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Subjects</h2>
+                  <div className="flex gap-2">
+                    {isAdmin && (
+                      <button onClick={() => setShowNewSubject(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                      </button>
+                    )}
+                    <button onClick={() => setShowSidebar(false)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors lg:hidden">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
             {showNewSubject && (
               <div className="mb-4 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900">
                 <input type="text" value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)} placeholder="Subject name..." className="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-2 bg-white dark:bg-zinc-800 mb-2" onKeyDown={(e) => e.key === "Enter" && createSubject()} autoFocus />
@@ -391,7 +406,7 @@ export default function Home() {
             )}
             <div className="space-y-1">
               {subjects.map((subject) => (
-                <div key={subject.id} onClick={() => { setActiveSubjectId(subject.id); setActiveVideoId(null); setOpenSections({}); }}
+                <div key={subject.id} onClick={() => { setActiveSubjectId(subject.id); setActiveVideoId(null); setOpenSections({}); setShowSidebar(false); }}
                   className={`group relative flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${activeSubjectId === subject.id ? "bg-zinc-100 dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"}`}>
                   <div className={`w-3 h-3 rounded-full ${subject.color} flex-shrink-0`} />
                   <div className="flex-1 min-w-0">
@@ -406,8 +421,9 @@ export default function Home() {
                 </div>
               ))}
             </div>
-          </div>
         </aside>
+        </>
+        )}
 
         <main className="flex-1 overflow-y-auto">
           {!activeSubject ? (
