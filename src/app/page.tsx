@@ -423,6 +423,9 @@ export default function Home() {
             <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Study Planner</h1>
           </div>
           <div className="flex items-center gap-4">
+            <a href="/pyqs" className="text-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+              20Y PYQ Bank
+            </a>
             <a href="/notes" className="text-sm bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black px-4 py-2 rounded-lg hover:opacity-90 transition-opacity">
               My Notes
             </a>
