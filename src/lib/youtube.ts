@@ -86,12 +86,12 @@ async function fetchPlaylistWithApi(playlistId: string, apiKey: string): Promise
 }
 
 async function fetchPlaylistScraping(playlistId: string): Promise<PlaylistInfo> {
-  const res = await fetch(`https://www.youtube.com/playlist?list=${playlistId}`, {
+  const pageRes = await fetch(`https://www.youtube.com/playlist?list=${playlistId}`, {
     headers: { "Accept-Language": "en-US,en;q=0.9" },
     signal: AbortSignal.timeout(15000),
   });
-  if (!res.ok) throw new Error("Playlist not found or is private");
-  const html = await res.text();
+  if (!pageRes.ok) throw new Error("Playlist not found or is private");
+  const html = await pageRes.text();
 
   let title = "YouTube Playlist";
   const titleMatch = html.match(/"title":"([^"]+)"/);
@@ -99,34 +99,46 @@ async function fetchPlaylistScraping(playlistId: string): Promise<PlaylistInfo> 
     title = titleMatch[1];
   }
 
-  const videos: PlaylistVideo[] = [];
-  const seen = new Set<string>();
+  const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
+  const visitorDataMatch = html.match(/"visitorData":"([^"]+)"/);
 
-  const videoRegex = /"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}/g;
-  let match;
-  while ((match = videoRegex.exec(html)) !== null) {
-    const videoId = match[1];
-    const videoTitle = match[2];
-    if (!seen.has(videoId)) {
-      seen.add(videoId);
-      videos.push({
-        videoId,
-        title: videoTitle,
-        thumbnailUrl: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-      });
-    }
+  if (!apiKeyMatch?.[1]) {
+    throw new Error("Could not extract API key from YouTube page");
   }
 
-  if (videos.length === 0) {
-    const altRegex = /watch\?v=([a-zA-Z0-9_-]{11})&amp;list=/g;
-    while ((match = altRegex.exec(html)) !== null) {
-      const videoId = match[1];
-      if (!seen.has(videoId)) {
-        seen.add(videoId);
+  const browseRes = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKeyMatch[1]}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      context: {
+        client: {
+          clientName: "WEB",
+          clientVersion: "2.20240101.00.00",
+          visitorData: visitorDataMatch?.[1] || "",
+        },
+      },
+      browseId: `VL${playlistId}`,
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!browseRes.ok) throw new Error("Failed to fetch playlist data");
+  const browseData = await browseRes.json();
+
+  const tab = browseData?.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content;
+  const items = tab?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents;
+
+  const videos: PlaylistVideo[] = [];
+
+  if (items && Array.isArray(items)) {
+    for (const item of items) {
+      const vm = item?.lockupViewModel;
+      if (vm?.contentId) {
+        const videoTitle = vm.metadata?.lockupMetadataViewModel?.title?.content || `Video ${videos.length + 1}`;
         videos.push({
-          videoId,
-          title: `Video ${videos.length + 1}`,
-          thumbnailUrl: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+          videoId: vm.contentId,
+          title: videoTitle,
+          thumbnailUrl: `https://img.youtube.com/vi/${vm.contentId}/mqdefault.jpg`,
         });
       }
     }
