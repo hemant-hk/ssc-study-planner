@@ -1,0 +1,33 @@
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import ToastHost from "@/components/ToastHost";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Study Planner",
+  description: "Your AI-powered SSC exam preparation companion",
+};
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">
+        {children}
+        <ToastHost />
+      </body>
+    </html>
+  );
+}

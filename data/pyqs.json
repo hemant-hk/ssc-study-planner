@@ -1,0 +1,322 @@
+[
+  {
+    "id": "pyq-001",
+    "subject": "Quantitative Aptitude",
+    "topic": "Percentage",
+    "year": 2019,
+    "tier": "Tier 1",
+    "question": "What is 25% of 25% of 25% of 6400?",
+    "options": [
+      "100",
+      "75",
+      "400",
+      "200"
+    ],
+    "answerIndex": 0,
+    "explanation": "Compute stepwise: 25% of 6400 = 1600; 25% of 1600 = 400; 25% of 400 = 100. Shortcut: (1/4)³ × 6400 = 6400/64 = 100."
+  },
+  {
+    "id": "pyq-002",
+    "subject": "Quantitative Aptitude",
+    "topic": "Profit & Loss",
+    "year": 2021,
+    "tier": "Tier 2",
+    "question": "A shopkeeper sells an article at a profit of 20%. If he had sold it for ₹60 more, his profit would have been 25%. What is the cost price of the article?",
+    "options": [
+      "₹1200",
+      "₹1000",
+      "₹900",
+      "₹1500"
+    ],
+    "answerIndex": 0,
+    "explanation": "Let CP = x. 1.25x − 1.20x = 60 → 0.05x = 60 → x = ₹1200. Shortcut: extra 5% corresponds to ₹60, so 100% = 60 × 20 = ₹1200."
+  },
+  {
+    "id": "pyq-003",
+    "subject": "Quantitative Aptitude",
+    "topic": "Time & Work",
+    "year": 2020,
+    "tier": "Tier 2",
+    "question": "A and B together can complete a work in 12 days, B and C in 15 days, and C and A in 20 days. In how many days will A, B and C together complete the work?",
+    "options": [
+      "10",
+      "15",
+      "12",
+      "8"
+    ],
+    "answerIndex": 0,
+    "explanation": "2(A+B+C) = 1/12 + 1/15 + 1/20 = 12/60 = 1/5 → A+B+C = 1/10 → 10 days. Shortcut: time together = 2xyz/(xy+yz+zx) style aggregate; here it reduces to 10."
+  },
+  {
+    "id": "pyq-004",
+    "subject": "Quantitative Aptitude",
+    "topic": "Simple & Compound Interest",
+    "year": 2022,
+    "tier": "Tier 1",
+    "question": "The simple interest on a sum for 2 years at 10% p.a. is ₹500. What is the compound interest (compounded annually) on the same sum at the same rate for 2 years?",
+    "options": [
+      "₹525",
+      "₹555",
+      "₹500",
+      "₹550"
+    ],
+    "answerIndex": 0,
+    "explanation": "P = (SI×100)/(R×T) = (500×100)/(10×2) = ₹2500. CI = SI + SI×(R/100) = 500 + 500×0.1 = ₹525. Shortcut: CI − SI = P×(R/100)² = 2500×0.01 = ₹25, so CI = 500 + 25."
+  },
+  {
+    "id": "pyq-005",
+    "subject": "Quantitative Aptitude",
+    "topic": "Ratio & Proportion",
+    "year": 2018,
+    "tier": "Tier 1",
+    "question": "If a : b = 3 : 4 and b : c = 6 : 7, then what is a : c?",
+    "options": [
+      "9 : 14",
+      "9 : 7",
+      "3 : 7",
+      "7 : 9"
+    ],
+    "answerIndex": 0,
+    "explanation": "Make b common: a:b = 9:12, b:c = 12:14 → a:c = 9:14. Shortcut: a/c = (a/b)×(b/c) = (3/4)×(6/7) = 9/14."
+  },
+  {
+    "id": "pyq-006",
+    "subject": "Reasoning",
+    "topic": "Syllogism",
+    "year": 2017,
+    "tier": "Tier 1",
+    "question": "Statements: All pens are books. All books are tables. Conclusions: I. All pens are tables. II. Some tables are pens. Which conclusion(s) follow?",
+    "options": [
+      "Only I follows",
+      "Only II follows",
+      "Both I and II follow",
+      "Neither follows"
+    ],
+    "answerIndex": 2,
+    "explanation": "Pens ⊆ Books ⊆ Tables, so all pens are tables (I) and, being a subset, some tables are pens (II). Shortcut: chain the 'all' relations; subset relations always yield 'some'."
+  },
+  {
+    "id": "pyq-007",
+    "subject": "Reasoning",
+    "topic": "Analogy",
+    "year": 2019,
+    "tier": "Tier 1",
+    "question": "Bird : Wings :: Fish : ?",
+    "options": [
+      "Scales",
+      "Gills",
+      "Fins",
+      "Tail"
+    ],
+    "answerIndex": 2,
+    "explanation": "Wings help birds swim in air; fins are the swimming organs of fish. Shortcut: match the 'locomotion/steering organ' pair."
+  },
+  {
+    "id": "pyq-008",
+    "subject": "Reasoning",
+    "topic": "Coding-Decoding",
+    "year": 2020,
+    "tier": "Tier 1",
+    "question": "In a certain code language, 'CAT' is written as 'DBU'. How is 'DOG' written in that code language?",
+    "options": [
+      "EPH",
+      "FPI",
+      "ENH",
+      "EPHG"
+    ],
+    "answerIndex": 0,
+    "explanation": "Each letter is shifted one step forward: C→D, A→B, T→U. Applying +1: D→E, O→P, G→H → EPH. Shortcut: any Caesar +1 code is applied uniformly to all letters."
+  },
+  {
+    "id": "pyq-009",
+    "subject": "Reasoning",
+    "topic": "Blood Relations",
+    "year": 2021,
+    "tier": "Tier 1",
+    "question": "Pointing to a photograph, a man says, 'She is the daughter of my grandfather's only son'. How is the girl related to the man?",
+    "options": [
+      "Sister",
+      "Cousin",
+      "Daughter",
+      "Niece"
+    ],
+    "answerIndex": 0,
+    "explanation": "Grandfather's only son = the man's father. Daughter of the father = the man's sister. Shortcut: collapse 'grandfather's only son' into 'father'."
+  },
+  {
+    "id": "pyq-010",
+    "subject": "Reasoning",
+    "topic": "Number Series",
+    "year": 2016,
+    "tier": "Tier 1",
+    "question": "Find the next number in the series: 3, 7, 15, 31, 63, ?",
+    "options": [
+      "127",
+      "129",
+      "119",
+      "125"
+    ],
+    "answerIndex": 0,
+    "explanation": "Each term is double the previous plus 1: 3×2+1=7, 7×2+1=15, …, 63×2+1=127. Shortcut: the series is 2ⁿ−1 for n=2,3,… → next is 2⁷−1 = 127."
+  },
+  {
+    "id": "pyq-011",
+    "subject": "English Comprehension",
+    "topic": "Error Spotting",
+    "year": 2018,
+    "tier": "Tier 1",
+    "question": "Identify the error in the sentence: 'He do not like to wake up early in the morning.'",
+    "options": [
+      "do",
+      "not",
+      "like",
+      "No error"
+    ],
+    "answerIndex": 0,
+    "explanation": "'He' takes the singular verb 'does'. Correct: 'He does not like…'. Shortcut: third-person singular (he/she/it) always needs 'does' in the negative."
+  },
+  {
+    "id": "pyq-012",
+    "subject": "English Comprehension",
+    "topic": "Synonyms",
+    "year": 2020,
+    "tier": "Tier 1",
+    "question": "Select the most appropriate synonym of the word 'ADEPT'.",
+    "options": [
+      "Inept",
+      "Skilled",
+      "Clumsy",
+      "Lazy"
+    ],
+    "answerIndex": 1,
+    "explanation": "'Adept' means very skilled or proficient. Shortcut: 'adept' and 'skilled' share the idea of competence at a task."
+  },
+  {
+    "id": "pyq-013",
+    "subject": "English Comprehension",
+    "topic": "Antonyms",
+    "year": 2021,
+    "tier": "Tier 2",
+    "question": "Select the most appropriate antonym of the word 'EXPLICIT'.",
+    "options": [
+      "Clear",
+      "Ambiguous",
+      "Obvious",
+      "Plain"
+    ],
+    "answerIndex": 1,
+    "explanation": "'Explicit' means clear and fully expressed; its opposite is 'ambiguous' (open to more than one interpretation). Shortcut: explicit ↔ ambiguous is a standard clarity pair."
+  },
+  {
+    "id": "pyq-014",
+    "subject": "English Comprehension",
+    "topic": "Idioms & Phrases",
+    "year": 2019,
+    "tier": "Tier 1",
+    "question": "What is the meaning of the idiom 'to burn the midnight oil'?",
+    "options": [
+      "To waste time",
+      "To work or study late into the night",
+      "To get angry",
+      "To lose money"
+    ],
+    "answerIndex": 1,
+    "explanation": "'Burn the midnight oil' means working or studying until late at night. Shortcut: think of oil lamps burnt while studying at night."
+  },
+  {
+    "id": "pyq-015",
+    "subject": "English Comprehension",
+    "topic": "Fill in the Blanks",
+    "year": 2017,
+    "tier": "Tier 1",
+    "question": "Fill in the blank: 'She is ______ than her brother.'",
+    "options": [
+      "tall",
+      "taller",
+      "tallest",
+      "most tall"
+    ],
+    "answerIndex": 1,
+    "explanation": "The comparison 'than' requires the comparative degree 'taller'. Shortcut: 'than' almost always signals -er / comparative."
+  },
+  {
+    "id": "pyq-016",
+    "subject": "General Awareness",
+    "topic": "Indian Polity",
+    "year": 2020,
+    "tier": "Tier 1",
+    "question": "Who is known as the 'Father of the Indian Constitution'?",
+    "options": [
+      "Dr. B. R. Ambedkar",
+      "Jawaharlal Nehru",
+      "Dr. Rajendra Prasad",
+      "Sardar Vallabhbhai Patel"
+    ],
+    "answerIndex": 0,
+    "explanation": "Dr. B. R. Ambedkar chaired the Drafting Committee of the Constituent Assembly and is regarded as the Father of the Indian Constitution. Shortcut: Ambedkar → Drafting Committee."
+  },
+  {
+    "id": "pyq-017",
+    "subject": "General Awareness",
+    "topic": "Modern History",
+    "year": 2021,
+    "tier": "Tier 1",
+    "question": "In which year was the Quit India Movement launched?",
+    "options": [
+      "1942",
+      "1947",
+      "1930",
+      "1919"
+    ],
+    "answerIndex": 0,
+    "explanation": "The Quit India Movement (Bharat Chhodo Andolan) was launched by Gandhi ji on 8 August 1942. Shortcut: remember 1942 as the 'Quit India' year during WWII."
+  },
+  {
+    "id": "pyq-018",
+    "subject": "General Awareness",
+    "topic": "Geography",
+    "year": 2019,
+    "tier": "Tier 1",
+    "question": "Which is the largest state in India by area?",
+    "options": [
+      "Rajasthan",
+      "Madhya Pradesh",
+      "Uttar Pradesh",
+      "Maharashtra"
+    ],
+    "answerIndex": 0,
+    "explanation": "Rajasthan (~342,239 sq km) is the largest Indian state by area. Shortcut: Rajasthan is both the largest by area and shares the longest national border by state."
+  },
+  {
+    "id": "pyq-019",
+    "subject": "General Awareness",
+    "topic": "Economics",
+    "year": 2022,
+    "tier": "Tier 1",
+    "question": "In which year was the Goods and Services Tax (GST) implemented in India?",
+    "options": [
+      "1 July 2017",
+      "1 April 2016",
+      "1 January 2018",
+      "15 August 2017"
+    ],
+    "answerIndex": 0,
+    "explanation": "GST was rolled out on 1 July 2017 through the 101st Constitutional Amendment. Shortcut: GST and 'midnight GST session' happened on the night of 30 June–1 July 2017."
+  },
+  {
+    "id": "pyq-020",
+    "subject": "General Awareness",
+    "topic": "Science & Technology",
+    "year": 2021,
+    "tier": "Tier 2",
+    "question": "Which vitamin is synthesised in the human skin upon exposure to sunlight?",
+    "options": [
+      "Vitamin D",
+      "Vitamin A",
+      "Vitamin C",
+      "Vitamin B12"
+    ],
+    "answerIndex": 0,
+    "explanation": "Vitamin D is synthesised when the skin is exposed to UV-B radiation from sunlight. Shortcut: the 'sunshine vitamin' is always Vitamin D."
+  }
+]
