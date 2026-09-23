@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import DoubtDrawer from "@/components/DoubtDrawer";
 import DiscussionThread from "@/components/DiscussionThread";
+import NotesButton from "@/components/NotesButton";
 
 interface VideoInfo {
   videoId: string;
@@ -132,6 +133,22 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("yt-study-subjects", JSON.stringify(subjects));
   }, [subjects]);
+
+  useEffect(() => {
+    if (subjects.length === 0 || activeVideoId) return;
+    const params = new URLSearchParams(window.location.search);
+    const vid = params.get("vid");
+    if (!vid) return;
+    for (const s of subjects) {
+      const v = s.videos.find((x) => x.videoId === vid);
+      if (v) {
+        setActiveSubjectId(s.id);
+        setActiveVideoId(vid);
+        setOpenSections({ video: true });
+        break;
+      }
+    }
+  }, [subjects, activeVideoId]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -406,6 +423,9 @@ export default function Home() {
             <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Study Planner</h1>
           </div>
           <div className="flex items-center gap-4">
+            <a href="/notes" className="text-sm bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black px-4 py-2 rounded-lg hover:opacity-90 transition-opacity">
+              My Notes
+            </a>
             <a href="/mock-test" className="text-sm bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
               Mock Tests
             </a>
@@ -594,6 +614,7 @@ export default function Home() {
                     </div>
                     <div className="lg:w-80 xl:w-96 shrink-0">
                       <DoubtDrawer
+                        videoId={activeVideo.videoId}
                         videoTitle={activeVideo.title}
                         subject={activeSubject.name}
                         topicSummary={activeVideo.studyPlan.summary}
@@ -640,7 +661,7 @@ export default function Home() {
                 {sectionBtn("revision", "Revision Points", <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, activeVideo.studyPlan.revisionPoints.length)}
                 {openSections.revision && (
                   <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-                    <ul className="space-y-2">{activeVideo.studyPlan.revisionPoints.map((p, i) => <li key={i} className="flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-400"><span className="text-green-500 mt-0.5">✓</span>{p}</li>)}</ul>
+                    <ul className="space-y-2">{activeVideo.studyPlan.revisionPoints.map((p, i) => <li key={i} className="flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-400"><span className="text-green-500 mt-0.5">✓</span><span className="flex-1">{p}</span><NotesButton subject={activeSubject.name} topic={activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={p} /></li>)}</ul>
                   </div>
                 )}
 
@@ -649,7 +670,7 @@ export default function Home() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {activeVideo.studyPlan.lastYearNotes.map((note, i) => (
                       <div key={i} className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800">
-                        <div className="flex items-center justify-between mb-2"><h4 className="font-medium text-sm text-zinc-900 dark:text-zinc-50">{note.topic}</h4><span className="text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">{note.frequency}</span></div>
+                        <div className="flex items-center justify-between mb-2"><h4 className="font-medium text-sm text-zinc-900 dark:text-zinc-50 flex-1">{note.topic}</h4><span className="text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">{note.frequency}</span><NotesButton subject={activeSubject.name} topic={activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={`${note.topic}: ${note.notes}`} title="Save note" /></div>
                         <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-2">{note.notes}</p>
                         <div className="flex flex-wrap gap-1">{note.exams.map((exam, j) => <span key={j} className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">{exam}</span>)}</div>
                       </div>
@@ -715,6 +736,13 @@ export default function Home() {
                                 <div className="flex items-center gap-2 mb-1"><span className={`text-[10px] px-2 py-0.5 rounded-full ${diffColor}`}>{q.difficulty}</span>{q.year && <span className="text-[10px] text-zinc-400">{q.exam || 'SSC'} {q.year}</span>}</div>
                                 <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{q.question}</p>
                               </div>
+                              <NotesButton
+                                subject={activeSubject.name}
+                                topic={activeVideo.title}
+                                videoId={activeVideo.videoId}
+                                contentType="quiz"
+                                content={`Q. ${q.question}\n${q.options.map((o, j) => `${String.fromCharCode(65 + j)}) ${o}`).join("\n")}\nCorrect Answer: ${String.fromCharCode(65 + q.correctAnswer)}. ${q.options[q.correctAnswer]}${q.explanation ? `\nExplanation: ${q.explanation}` : ""}`}
+                              />
                             </div>
                             <div className="ml-9 space-y-2">
                               {q.options.map((opt, j) => {

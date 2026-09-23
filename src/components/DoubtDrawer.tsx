@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import NotesButton from "@/components/NotesButton";
 
 interface DoubtDrawerProps {
+  videoId: string;
   videoTitle: string;
   subject: string;
   topicSummary: string;
@@ -13,7 +15,7 @@ interface ChatMessage {
   text: string;
 }
 
-export default function DoubtDrawer({ videoTitle, subject, topicSummary }: DoubtDrawerProps) {
+export default function DoubtDrawer({ videoId, videoTitle, subject, topicSummary }: DoubtDrawerProps) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -162,7 +164,7 @@ try {
               </p>
             )}
             {messages.map((m, i) => (
-              <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+              <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start items-start gap-1.5"}>
                 <div
                   className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
                     m.role === "user"
@@ -172,6 +174,17 @@ try {
                 >
                   {m.text || (loading && i === messages.length - 1 ? "Thinking…" : "")}
                 </div>
+                {m.role === "assistant" && m.text && !(loading && i === messages.length - 1) && (
+                  <NotesButton
+                    subject={subject}
+                    topic={videoTitle}
+                    videoId={videoId}
+                    contentType="doubt"
+                    content={m.text}
+                    title="Add to Notes"
+                    className="mt-1 shrink-0"
+                  />
+                )}
               </div>
             ))}
             {error && (
