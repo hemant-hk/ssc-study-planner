@@ -46,7 +46,7 @@ export interface StudyChapter {
 async function callGroq(apiKey: string, prompt: string, maxTokens: number): Promise<string> {
   let res;
   let lastError;
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -59,6 +59,7 @@ async function callGroq(apiKey: string, prompt: string, maxTokens: number): Prom
         temperature: 0.7,
         max_tokens: maxTokens,
       }),
+      signal: AbortSignal.timeout(180000),
     });
 
     if (res.ok) break;
@@ -68,8 +69,8 @@ async function callGroq(apiKey: string, prompt: string, maxTokens: number): Prom
       const retryAfterHeader = res.headers.get("retry-after");
       const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
       const waitSec = Number.isFinite(retryAfterSec) && retryAfterSec > 0
-        ? Math.min(retryAfterSec, 60)
-        : Math.min(5 * 2 ** attempt, 30);
+        ? Math.min(retryAfterSec, 30)
+        : Math.min(5 * 2 ** attempt, 20);
       await new Promise((r) => setTimeout(r, waitSec * 1000));
       continue;
     }
@@ -77,10 +78,7 @@ async function callGroq(apiKey: string, prompt: string, maxTokens: number): Prom
   }
 
   if (!res || !res.ok) {
-    if (res?.status === 429) {
-      throw new Error("AI is busy right now (rate limit). Please wait a minute and try again — your video stays selected.");
-    }
-    throw new Error(`Groq API error: ${lastError}`);
+    throw new Error("AI is busy right now. Please wait a moment and try again.");
   }
 
   const data = await res.json();
@@ -93,24 +91,32 @@ function extractJson(text: string): string {
   return match[0];
 }
 
-export async function generateStudyPlan(
-  videoInfo: YouTubeVideoInfo
-): Promise<StudyPlan> {
+function getApiKey(): string {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey || apiKey === "your_groq_api_key_here") {
-    throw new Error("GROQ_API_KEY is not configured. Get one free at https://console.groq.com");
+    throw new Error("GROQ_API_KEY is not configured");
   }
+  return apiKey;
+}
 
+function buildBaseContext(videoInfo: YouTubeVideoInfo): string {
   const chapterContext =
     videoInfo.chapters.length > 0
       ? `Video chapters:\n${videoInfo.chapters.map((c) => `- ${c.timestamp} ${c.title}`).join("\n")}`
       : "No chapters found in the video description.";
 
-  const baseContext = `Video Title: ${videoInfo.title}
+  return `Video Title: ${videoInfo.title}
 Video Author: ${videoInfo.author}
 Video Description:
 ${videoInfo.description.slice(0, 2000)}
 ${chapterContext}`;
+}
+
+export async function generateStudyPlan(
+  videoInfo: YouTubeVideoInfo
+): Promise<StudyPlan> {
+  const apiKey = getApiKey();
+  const baseContext = buildBaseContext(videoInfo);
 
   const studyPrompt = `You are an expert study planner for SSC exam preparation. Analyze this YouTube video and create a detailed study plan.
 
@@ -134,9 +140,9 @@ Respond with ONLY valid JSON (no markdown, no code blocks):
   "lastYearNotes": [
     {
       "topic": "Topic name",
-      "frequency": "Asked X times in last5years",
+      "frequency": "Asked X times in last five years",
       "notes": "Key facts and notes that appeared in exams",
-      "exams": ["SSC CGL2023", "SSC CHSL2022"]
+      "exams": ["SSC CGL 2023", "SSC CHSL 2022"]
     }
   ],
   "predictedTopics": [
@@ -151,24 +157,24 @@ Respond with ONLY valid JSON (no markdown, no code blocks):
 
 LAST YEAR NOTES REQUIREMENTS:
 - Analyze which topics from this video are most frequently asked in SSC exams
-- List8-12most important topics with their exam frequency
+- List 8-12 most important topics with their exam frequency
 - Include specific facts, dates, names that appeared in previous year papers
 - Mention which SSC exams asked these questions (CGL, CHSL, CPO, MTS etc.)
-- Focus on2020-2025exam trends
+- Focus on 2020-2025 exam trends
 
 PREDICTED TOPICS REQUIREMENTS:
-- Predict8-10topics most likely to appear in upcoming2025-2026SSC exams
-- Based on patterns from last5years of SSC exams
+- Predict 8-10 topics most likely to appear in upcoming 2025-2026 SSC exams
+- Based on patterns from last 5 years of SSC exams
 - Include probability (High/Medium/Low) based on frequency analysis
 - Give specific preparation tips for each predicted topic
 - Explain reasoning behind each prediction
 
-If there are no chapters, create4-8logical chapters. Make notes detailed and educational.`;
+If there are no chapters, create 4-8 logical chapters. Make notes detailed and educational.`;
 
   const studyText = await callGroq(apiKey, studyPrompt, 4096);
   const studyData = JSON.parse(extractJson(studyText));
 
-  const studyPlan: StudyPlan = {
+  return {
     summary: studyData.summary || "",
     keyTopics: studyData.keyTopics || [],
     chapters: studyData.chapters || [],
@@ -179,30 +185,24 @@ If there are no chapters, create4-8logical chapters. Make notes detailed and edu
     lastYearNotes: studyData.lastYearNotes || [],
     predictedTopics: studyData.predictedTopics || [],
   };
+}
 
+export async function generateQuiz(
+  videoInfo: YouTubeVideoInfo,
+  studyPlan: StudyPlan
+): Promise<QuizQuestion[]> {
+  const apiKey = getApiKey();
+  const baseContext = buildBaseContext(videoInfo);
   const quizTopics = studyPlan.keyTopics.join(", ");
   const chapterList = studyPlan.chapters.map((c) => c.title).join(", ");
 
-  const batchConfigs = [
-    { offset: "1-50", difficulty: "17 easy, 17 medium, 16 hard", years: "2020-2025" },
-    { offset: "51-100", difficulty: "17 easy, 17 medium, 16 hard", years: "2015-2019" },
-    { offset: "101-150", difficulty: "17 easy, 17 medium, 16 hard", years: "2010-2014" },
-    { offset: "151-200", difficulty: "17 easy, 17 medium, 16 hard", years: "2005-2009" },
-  ];
-
-  // Run batches sequentially with a delay between them to avoid rate limits.
-  for (let i = 0; i < batchConfigs.length; i++) {
-    const batch = batchConfigs[i];
-    const quizPrompt = `You are an SSC exam question expert. Generate50previous year style questions for this topic.
+  const quizPrompt = `You are an SSC exam question expert. Generate 10 previous year style questions for this topic.
 
 Topic: ${quizTopics}
 Chapters: ${chapterList}
 ${baseContext}
 
-Questions ${batch.offset} - Focus on years ${batch.years}
-Difficulty mix: ${batch.difficulty}
-
-Include questions from SSC CGL, SSC CHSL, SSC CPO, SSC MTS, SSC Stenographer, SSC GD exams.
+Include questions from SSC CGL, SSC CHSL, SSC CPO and SSC MTS exams.
 Recall actual previous year questions from SSC exams on these topics.
 
 Respond with ONLY valid JSON (no markdown):
@@ -220,20 +220,9 @@ Respond with ONLY valid JSON (no markdown):
   ]
 }
 
-Generate exactly50questions. Each must have4options, correctAnswer (0-indexed), explanation, difficulty, year, exam.`;
+Generate exactly 10 questions. Each must have 4 options, correctAnswer (0-indexed), explanation, difficulty, year, exam.`;
 
-    try {
-      const text = await callGroq(apiKey, quizPrompt, 16000);
-      const data = JSON.parse(extractJson(text));
-      studyPlan.quiz.push(...((data.quiz || []) as QuizQuestion[]));
-    } catch {
-      // Skip a failed batch rather than failing the whole plan.
-    }
-
-    if (i < batchConfigs.length - 1) {
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-  }
-
-  return studyPlan;
+  const text = await callGroq(apiKey, quizPrompt, 4000);
+  const data = JSON.parse(extractJson(text));
+  return (data.quiz || []) as QuizQuestion[];
 }

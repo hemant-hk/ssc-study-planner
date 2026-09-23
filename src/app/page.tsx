@@ -84,6 +84,7 @@ export default function Home() {
   const [addingToSubject, setAddingToSubject] = useState<string | null>(null);
   const [playlistProgress, setPlaylistProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
+  const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
@@ -300,6 +301,37 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate study plan");
+      const applyPlan = (plan: StudyPlan) => {
+        setSubjects((prev) => {
+          const updated = prev.map((s) => {
+            if (s.id !== subjectId) return s;
+            return { ...s, videos: s.videos.map((v) => (v.videoId === videoId ? { ...v, studyPlan: plan } : v)) };
+          });
+          syncToApi(updated.find((s) => s.id === subjectId));
+          return updated;
+        });
+        setActiveVideoId(videoId);
+        setOpenSections({ video: true });
+      };
+      applyPlan(data.studyPlan);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate study plan");
+    } finally {
+      setGeneratingPlan(null);
+    }
+  }
+
+  async function generateQuizForVideo(subjectId: string, videoId: string) {
+    setGeneratingQuiz(true);
+    setError("");
+    try {
+      const res = await fetch("/api/study-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: `https://youtube.com/watch?v=${videoId}`, style: "quiz" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate quiz");
       setSubjects((prev) => {
         const updated = prev.map((s) => {
           if (s.id !== subjectId) return s;
@@ -308,12 +340,10 @@ export default function Home() {
         syncToApi(updated.find((s) => s.id === subjectId));
         return updated;
       });
-      setActiveVideoId(videoId);
-      setOpenSections({ video: true });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to generate study plan");
+      setError(err instanceof Error ? err.message : "Failed to generate quiz");
     } finally {
-      setGeneratingPlan(null);
+      setGeneratingQuiz(false);
     }
   }
 
@@ -631,7 +661,17 @@ export default function Home() {
                 )}
 
                 {sectionBtn("quiz", "SSC Quiz", <svg className="w-5 h-5 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>, activeVideo.studyPlan?.quiz?.length)}
-                {openSections.quiz && activeVideo.studyPlan?.quiz && (
+                {openSections.quiz && activeVideo.studyPlan?.quiz && activeVideo.studyPlan.quiz.length === 0 && (
+                  <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 text-center">
+                    <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">Generate 10 SSC previous-year questions for this topic.</p>
+                    <button onClick={() => generateQuizForVideo(activeSubject.id, activeVideo.videoId)} disabled={generatingQuiz}
+                      className="inline-flex items-center gap-2 px-6 py-2.5 bg-pink-600 text-white rounded-lg font-medium hover:bg-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                      {generatingQuiz && <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
+                      {generatingQuiz ? "Generating quiz..." : "Generate Quiz"}
+                    </button>
+                  </div>
+                )}
+                {openSections.quiz && activeVideo.studyPlan?.quiz && activeVideo.studyPlan.quiz.length > 0 && (
                   <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
                     <div className="flex gap-2 mb-4">
                       {(["all", "easy", "medium", "hard"] as const).map((f) => (
