@@ -55,6 +55,8 @@ export default function Home() {
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeChapter, setActiveChapter] = useState<number | null>(null);
   const [addingToSubject, setAddingToSubject] = useState<string | null>(null);
+  const [playlistProgress, setPlaylistProgress] = useState<{ current: number; total: number; title: string } | null>(null);
+  const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -113,6 +115,7 @@ export default function Home() {
     setLoading(true);
     setError("");
     setAddingToSubject(subjectId);
+    setPlaylistProgress(null);
 
     try {
       const res = await fetch("/api/study-plan", {
@@ -122,28 +125,38 @@ export default function Home() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate study plan");
+      if (!res.ok) throw new Error(data.error || "Failed to process URL");
 
       if (data.type === "playlist") {
-        for (const video of data.playlist.videos) {
-          const videoRes = await fetch("/api/study-plan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: `https://youtube.com/watch?v=${video.videoId}` }),
-          });
-          const videoData = await videoRes.json();
-          if (videoRes.ok && videoData.type === "video") {
-            const newVideo: SubjectVideo = {
+        const videos = data.playlist.videos;
+        setPlaylistProgress({ current: 0, total: videos.length, title: data.playlist.title });
+
+        const existingIds = new Set(
+          subjects.find((s) => s.id === subjectId)?.videos.map((v) => v.videoId) || []
+        );
+
+        const newVideos: SubjectVideo[] = [];
+        for (let i = 0; i < videos.length; i++) {
+          const video = videos[i];
+          if (!existingIds.has(video.videoId)) {
+            newVideos.push({
               videoId: video.videoId,
-              title: videoData.videoInfo.title,
-              thumbnailUrl: videoData.videoInfo.thumbnailUrl,
-              studyPlan: videoData.studyPlan,
-            };
-            setSubjects((prev) =>
-              prev.map((s) => (s.id === subjectId ? { ...s, videos: [...s.videos, newVideo] } : s))
-            );
+              title: video.title,
+              thumbnailUrl: video.thumbnailUrl,
+              studyPlan: null,
+            });
           }
+          setPlaylistProgress({ current: i + 1, total: videos.length, title: data.playlist.title });
         }
+
+        if (newVideos.length > 0) {
+          setSubjects((prev) =>
+            prev.map((s) => (s.id === subjectId ? { ...s, videos: [...s.videos, ...newVideos] } : s))
+          );
+        }
+
+        setPlaylistProgress(null);
+        setUrl("");
       } else {
         const newVideo: SubjectVideo = {
           videoId: data.videoInfo.videoId,
@@ -155,14 +168,49 @@ export default function Home() {
           prev.map((s) => (s.id === subjectId ? { ...s, videos: [...s.videos, newVideo] } : s))
         );
         setActiveVideoId(newVideo.videoId);
+        setUrl("");
       }
-
-      setUrl("");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      setPlaylistProgress(null);
     } finally {
       setLoading(false);
       setAddingToSubject(null);
+    }
+  }
+
+  async function generateStudyPlanForVideo(subjectId: string, videoId: string) {
+    setGeneratingPlan(videoId);
+    setError("");
+
+    try {
+      const res = await fetch("/api/study-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: `https://youtube.com/watch?v=${videoId}` }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate study plan");
+
+      setSubjects((prev) =>
+        prev.map((s) => {
+          if (s.id !== subjectId) return s;
+          return {
+            ...s,
+            videos: s.videos.map((v) =>
+              v.videoId === videoId
+                ? { ...v, studyPlan: data.studyPlan }
+                : v
+            ),
+          };
+        })
+      );
+      setActiveVideoId(videoId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate study plan");
+    } finally {
+      setGeneratingPlan(null);
     }
   }
 
@@ -174,6 +222,14 @@ export default function Home() {
       })
     );
     if (activeVideoId === videoId) setActiveVideoId(null);
+  }
+
+  function handleVideoClick(subjectId: string, video: SubjectVideo) {
+    if (video.studyPlan) {
+      setActiveVideoId(video.videoId);
+    } else {
+      generateStudyPlanForVideo(subjectId, video.videoId);
+    }
   }
 
   return (
@@ -193,7 +249,6 @@ export default function Home() {
       </header>
 
       <div className="flex-1 flex max-w-7xl mx-auto w-full overflow-hidden">
-        {/* Subjects Sidebar */}
         <aside className="w-64 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-y-auto flex-shrink-0">
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
@@ -256,7 +311,6 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* Main Content */}
         <main className="flex-1 overflow-y-auto">
           {!activeSubject ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
@@ -265,12 +319,11 @@ export default function Home() {
               </svg>
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 mb-2">Create a Subject</h2>
               <p className="text-zinc-500 dark:text-zinc-400 max-w-sm">
-                Click the <span className="text-red-600 font-medium">+</span> button above to create a subject, then add YouTube videos to it.
+                Click the <span className="text-red-600 font-medium">+</span> button above to create a subject, then add YouTube videos or playlists.
               </p>
             </div>
           ) : (
             <div className="p-6 space-y-6">
-              {/* Add Video */}
               <div className="flex items-center gap-3">
                 <div className={`w-3 h-3 rounded-full ${activeSubject.color}`} />
                 <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{activeSubject.name}</h2>
@@ -290,7 +343,7 @@ export default function Home() {
                   disabled={loading || !url.trim()}
                   className="rounded-lg bg-red-600 px-5 py-3 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
                 >
-                  {loading && addingToSubject === activeSubject.id ? "Adding..." : "Add Video"}
+                  {loading && addingToSubject === activeSubject.id ? "Adding..." : "Add"}
                 </button>
                 <button
                   onClick={() => setShowSchedule(!showSchedule)}
@@ -302,11 +355,29 @@ export default function Home() {
                 </button>
               </div>
 
+              {playlistProgress && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950 px-4 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                      Importing: {playlistProgress.title}
+                    </span>
+                    <span className="text-xs text-blue-600 dark:text-blue-400">
+                      {playlistProgress.current}/{playlistProgress.total}
+                    </span>
+                  </div>
+                  <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      style={{ width: `${(playlistProgress.current / playlistProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {error && (
                 <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 px-4 py-3 text-red-700 dark:text-red-300 text-sm">{error}</div>
               )}
 
-              {/* Schedule */}
               {showSchedule && (
                 <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
                   <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
@@ -343,7 +414,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Video Player */}
               {activeVideo && activeVideo.studyPlan && (
                 <div className="space-y-6">
                   <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
@@ -422,7 +492,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Videos Grid */}
               {activeSubject.videos.length > 0 && !activeVideoId && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {activeSubject.videos.map((video) => (
@@ -430,15 +499,25 @@ export default function Home() {
                       key={video.videoId}
                       className="group relative rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden cursor-pointer hover:shadow-lg transition-all"
                     >
-                      <div onClick={() => setActiveVideoId(video.videoId)}>
+                      <div onClick={() => handleVideoClick(activeSubject.id, video)}>
                         <img src={video.thumbnailUrl} alt={video.title} className="w-full aspect-video object-cover" />
                         <div className="p-3">
                           <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 line-clamp-2">{video.title}</h3>
-                          {video.studyPlan && (
+                          {generatingPlan === video.videoId ? (
+                            <div className="flex items-center gap-2 mt-2">
+                              <svg className="animate-spin h-3 w-3 text-red-500" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                              <span className="text-[10px] text-red-500">Generating study plan...</span>
+                            </div>
+                          ) : video.studyPlan ? (
                             <div className="flex gap-2 mt-2">
                               <span className="text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">{video.studyPlan.difficulty}</span>
                               <span className="text-[10px] bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">{video.studyPlan.estimatedStudyTime}</span>
                             </div>
+                          ) : (
+                            <p className="text-[10px] text-zinc-400 mt-1">Click to generate study plan</p>
                           )}
                         </div>
                       </div>
@@ -460,7 +539,7 @@ export default function Home() {
                   <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  <p className="text-sm">No videos yet. Paste a YouTube URL above to add one.</p>
+                  <p className="text-sm">No videos yet. Paste a YouTube URL or playlist above.</p>
                 </div>
               )}
 
@@ -478,7 +557,7 @@ export default function Home() {
       </div>
 
       <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-3">
-        <p className="text-center text-xs text-zinc-400">Powered by YouTube Data API & Google Gemini AI</p>
+        <p className="text-center text-xs text-zinc-400">Powered by YouTube Data API & Groq AI</p>
       </footer>
     </div>
   );
