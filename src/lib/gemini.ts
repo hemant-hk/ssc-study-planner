@@ -53,14 +53,28 @@ function modelsFor(maxTokens: number): string[] {
     : GROQ_MODELS.filter((m) => m !== "qwen/qwen3.8-27b");
 }
 
-export async function callGroq(apiKey: string, prompt: string, maxTokens: number): Promise<string> {
+export interface CallGroqOptions {
+  // Override the default model chain (e.g. fall back to specific llama models).
+  models?: string[];
+  // When true (default), only a valid complete JSON object is returned.
+  // Set false to get the raw text content (used by chat-style callers).
+  requireJSON?: boolean;
+}
+
+export async function callGroq(
+  apiKey: string,
+  prompt: string,
+  maxTokens: number,
+  options?: CallGroqOptions
+): Promise<string> {
   let lastError = "Unknown error";
+  const chain = options?.models && options.models.length > 0 ? options.models : modelsFor(maxTokens);
+  const requireJSON = options?.requireJSON ?? true;
   // Two passes over all models so a temporary rate limit (429) doesn't block
   // an otherwise-clean model waiting on a different budget.
   for (let pass = 0; pass < 2; pass++) {
     let hadRateLimit = false;
     let longestReset = 0;
-    const chain = modelsFor(maxTokens);
     for (let modelIndex = 0; modelIndex < chain.length; modelIndex++) {
       const model = chain[modelIndex];
       const tokens = Math.min(maxTokens, MODEL_TOKEN_CAPS[model] ?? maxTokens);
@@ -93,6 +107,12 @@ export async function callGroq(apiKey: string, prompt: string, maxTokens: number
           const finishReason = data.choices?.[0]?.finish_reason;
           if (finishReason === "length") {
             lastError = "Response truncated by token limit";
+            continue;
+          }
+          // Chat-style callers want raw prose; skip the JSON gate entirely.
+          if (!requireJSON) {
+            if (content) return content;
+            lastError = "Empty response from AI";
             continue;
           }
           // Return only a *valid, complete* JSON block so downstream parsing

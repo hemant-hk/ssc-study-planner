@@ -19,6 +19,7 @@ export default function DoubtDrawer({ videoTitle, subject, topicSummary }: Doubt
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [statusNotice, setStatusNotice] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
@@ -36,6 +37,7 @@ export default function DoubtDrawer({ videoTitle, subject, topicSummary }: Doubt
 
     setError("");
     setInput("");
+    setStatusNotice("");
     const userMsg: ChatMessage = { role: "user", text };
     setMessages((prev) => [...prev, userMsg, { role: "assistant", text: "" }]);
 
@@ -78,32 +80,37 @@ export default function DoubtDrawer({ videoTitle, subject, topicSummary }: Doubt
         for (const event of events) {
           const dataLine = event.split("\n").find((l) => l.startsWith("data: "));
           if (!dataLine) continue;
-          try {
-            const payload = JSON.parse(dataLine.slice(6));
-            if (payload.type === "delta" && typeof payload.text === "string") {
-              full += payload.text;
-              setMessages((prev) => {
-                const next = [...prev];
-                const last = next[next.length - 1];
-                if (last && last.role === "assistant") {
-                  next[next.length - 1] = { role: "assistant", text: full };
-                }
-                return next;
-              });
-            } else if (payload.type === "done" && typeof payload.text === "string") {
-              full = payload.text;
-              setMessages((prev) => {
-                const next = [...prev];
-                const last = next[next.length - 1];
-                if (last && last.role === "assistant") {
-                  next[next.length - 1] = { role: "assistant", text: full };
-                }
-                return next;
-              });
-            } else if (payload.type === "error") {
-              throw new Error(payload.message || "Doubt solver error");
-            }
-          } catch {
+try {
+              const payload = JSON.parse(dataLine.slice(6));
+              if (payload.type === "delta" && typeof payload.text === "string") {
+                full += payload.text;
+                setMessages((prev) => {
+                  const next = [...prev];
+                  const last = next[next.length - 1];
+                  if (last && last.role === "assistant") {
+                    next[next.length - 1] = { role: "assistant", text: full };
+                  }
+                  return next;
+                });
+              } else if (payload.type === "status" && typeof payload.message === "string") {
+                setStatusNotice(payload.message);
+              } else if (payload.type === "done" && typeof payload.text === "string") {
+                full = payload.text;
+                setMessages((prev) => {
+                  const next = [...prev];
+                  const last = next[next.length - 1];
+                  if (last && last.role === "assistant") {
+                    next[next.length - 1] = { role: "assistant", text: full };
+                  }
+                  return next;
+                });
+                setStatusNotice("");
+              } else if (payload.type === "error") {
+                const status = typeof payload.status === "string" ? payload.status : "";
+                const message = typeof payload.message === "string" ? payload.message : "Doubt solver error";
+                throw new Error(status ? `Error ${status}: ${message}` : message);
+              }
+            } catch {
             // ignore malformed event frames
           }
         }
@@ -169,6 +176,11 @@ export default function DoubtDrawer({ videoTitle, subject, topicSummary }: Doubt
             ))}
             {error && (
               <div className="text-xs text-red-500 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950">{error}</div>
+            )}
+            {statusNotice && !error && (
+              <div className="text-[10px] text-amber-600 dark:text-amber-400 px-2 py-1 rounded bg-amber-50 dark:bg-amber-950">
+                {statusNotice}
+              </div>
             )}
             <div ref={bottomRef} />
           </div>
