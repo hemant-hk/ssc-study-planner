@@ -18,6 +18,7 @@ interface QuizQuestion {
   explanation: string;
   difficulty: "easy" | "medium" | "hard";
   year?: string;
+  exam?: string;
 }
 
 interface StudyPlan {
@@ -559,7 +560,7 @@ export default function Home() {
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-1">
                                     <span className={`text-[10px] px-2 py-0.5 rounded-full ${diffColor}`}>{q.difficulty}</span>
-                                    {q.year && <span className="text-[10px] text-zinc-400">Similar to {q.year}</span>}
+                                    {q.year && <span className="text-[10px] text-zinc-400">{q.exam || 'SSC'} {q.year}</span>}
                                   </div>
                                   <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{q.question}</p>
                                 </div>

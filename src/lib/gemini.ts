@@ -70,19 +70,23 @@ Create a comprehensive study plan in the following JSON format (respond with ONL
       "correctAnswer": 0,
       "explanation": "Detailed explanation of the correct answer",
       "difficulty": "easy",
-      "year": "2023"
+      "year": "2023",
+      "exam": "SSC CGL"
     }
   ]
 }
 
 IMPORTANT QUIZ REQUIREMENTS:
-- Generate15quiz questions based on the video topic
-- Questions should be similar to SSC CGL previous year questions
-- Include a mix of difficulties:5easy,5medium,5hard
+- Generate50quiz questions based on the video topic
+- Include questions from SSC CGL, SSC CHSL, SSC CPO, SSC MTS, SSC Stenographer, SSC GD exams
+- Cover years2005to2025(20years of SSC exams)
+- Include a mix of difficulties:17easy,17medium,16hard
 - Each question must have4options with1correct answer (correctAnswer is0-indexed)
-- Include the SSC CGL year the question is similar to (e.g., "2023", "2022", "2021")
+- Include the year (e.g., "2023", "2018", "2012") and exam name (e.g., "SSC CGL", "SSC CHSL") for each question
 - Add a detailed explanation for each answer
 - Questions should test factual knowledge, conceptual understanding, and application
+- Try to recall actual previous year questions from SSC exams on this topic
+- Cover all subtopics from the video comprehensively
 
 If there are no chapters in the video, create logical chapters based on the content description (aim for4-8chapters). Make the notes detailed and educational.`;
 
@@ -99,7 +103,7 @@ If there are no chapters in the video, create logical chapters based on the cont
         model: "openai/gpt-oss-120b",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 8000,
+        max_tokens: 16000,
       }),
     });
 
