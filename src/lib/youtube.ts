@@ -44,10 +44,15 @@ export function extractPlaylistId(url: string): string | null {
 
 export async function fetchPlaylistInfo(playlistId: string): Promise<PlaylistInfo> {
   const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) {
-    throw new Error("YOUTUBE_API_KEY is not configured. Get one from Google Cloud Console.");
+
+  if (apiKey && apiKey !== "your_youtube_api_key_here") {
+    return fetchPlaylistWithApi(playlistId, apiKey);
   }
 
+  return fetchPlaylistScraping(playlistId);
+}
+
+async function fetchPlaylistWithApi(playlistId: string, apiKey: string): Promise<PlaylistInfo> {
   const metaRes = await fetch(
     `https://www.googleapis.com/youtube/v3/playlists?part=snippet&id=${playlistId}&key=${apiKey}`
   );
@@ -76,6 +81,56 @@ export async function fetchPlaylistInfo(playlistId: string): Promise<PlaylistInf
     }
     nextPageToken = data.nextPageToken || "";
   } while (nextPageToken);
+
+  return { playlistId, title, videos };
+}
+
+async function fetchPlaylistScraping(playlistId: string): Promise<PlaylistInfo> {
+  const res = await fetch(`https://www.youtube.com/playlist?list=${playlistId}`, {
+    headers: { "Accept-Language": "en-US,en;q=0.9" },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error("Playlist not found or is private");
+  const html = await res.text();
+
+  let title = "YouTube Playlist";
+  const titleMatch = html.match(/"title":"([^"]+)"/);
+  if (titleMatch && titleMatch[1]) {
+    title = titleMatch[1];
+  }
+
+  const videos: PlaylistVideo[] = [];
+  const seen = new Set<string>();
+
+  const videoRegex = /"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}/g;
+  let match;
+  while ((match = videoRegex.exec(html)) !== null) {
+    const videoId = match[1];
+    const videoTitle = match[2];
+    if (!seen.has(videoId)) {
+      seen.add(videoId);
+      videos.push({
+        videoId,
+        title: videoTitle,
+        thumbnailUrl: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+      });
+    }
+  }
+
+  if (videos.length === 0) {
+    const altRegex = /watch\?v=([a-zA-Z0-9_-]{11})&amp;list=/g;
+    while ((match = altRegex.exec(html)) !== null) {
+      const videoId = match[1];
+      if (!seen.has(videoId)) {
+        seen.add(videoId);
+        videos.push({
+          videoId,
+          title: `Video ${videos.length + 1}`,
+          thumbnailUrl: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+        });
+      }
+    }
+  }
 
   return { playlistId, title, videos };
 }
