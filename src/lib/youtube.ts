@@ -43,69 +43,62 @@ export function extractPlaylistId(url: string): string | null {
 }
 
 export async function fetchPlaylistInfo(playlistId: string): Promise<PlaylistInfo> {
-  const res = await fetch(`https://www.youtube.com/playlist?list=${playlistId}`, {
-    headers: { "Accept-Language": "en-US,en;q=0.9" },
-  });
-  if (!res.ok) throw new Error("Playlist not found or is private");
-  const html = await res.text();
-
-  let title = "YouTube Playlist";
-  const titleMatch = html.match(/"title":"([^"]+)"/);
-  if (titleMatch && titleMatch[1]) {
-    title = titleMatch[1];
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) {
+    throw new Error("YOUTUBE_API_KEY is not configured. Get one from Google Cloud Console.");
   }
+
+  const metaRes = await fetch(
+    `https://www.googleapis.com/youtube/v3/playlists?part=snippet&id=${playlistId}&key=${apiKey}`
+  );
+  if (!metaRes.ok) throw new Error("Failed to fetch playlist info");
+  const metaData = await metaRes.json();
+  const title = metaData.items?.[0]?.snippet?.title || "YouTube Playlist";
 
   const videos: PlaylistVideo[] = [];
-  const videoRegex = /"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}/g;
-  let match;
-  const seen = new Set<string>();
+  let nextPageToken = "";
 
-  while ((match = videoRegex.exec(html)) !== null) {
-    const videoId = match[1];
-    const videoTitle = match[2];
-    if (!seen.has(videoId)) {
-      seen.add(videoId);
-      videos.push({
-        videoId,
-        title: videoTitle,
-        thumbnailUrl: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-      });
-    }
-  }
+  do {
+    const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${playlistId}&key=${apiKey}${nextPageToken ? `&pageToken=${nextPageToken}` : ""}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch playlist videos");
+    const data = await res.json();
 
-  if (videos.length === 0) {
-    const altRegex = /watch\?v=([a-zA-Z0-9_-]{11})&amp;list=/g;
-    while ((match = altRegex.exec(html)) !== null) {
-      const videoId = match[1];
-      if (!seen.has(videoId)) {
-        seen.add(videoId);
+    for (const item of data.items || []) {
+      const snippet = item.snippet;
+      if (snippet?.resourceId?.videoId) {
         videos.push({
-          videoId,
-          title: `Video ${videos.length + 1}`,
-          thumbnailUrl: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+          videoId: snippet.resourceId.videoId,
+          title: snippet.title,
+          thumbnailUrl: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${snippet.resourceId.videoId}/mqdefault.jpg`,
         });
       }
     }
-  }
+    nextPageToken = data.nextPageToken || "";
+  } while (nextPageToken);
 
   return { playlistId, title, videos };
 }
 
 export async function fetchVideoInfo(videoId: string): Promise<YouTubeVideoInfo> {
   const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-  const res = await fetch(oembedUrl);
+  const res = await fetch(oembedUrl, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error("Video not found or is private");
   const data = await res.json();
 
-  const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-    headers: { "Accept-Language": "en-US,en;q=0.9" },
-  });
-  const html = await pageRes.text();
-
   let description = "";
-  const descMatch = html.match(/"shortDescription":"(.*?)"/);
-  if (descMatch && descMatch[1]) {
-    description = descMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  try {
+    const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: { "Accept-Language": "en-US,en;q=0.9" },
+      signal: AbortSignal.timeout(10000),
+    });
+    const html = await pageRes.text();
+    const descMatch = html.match(/"shortDescription":"(.*?)"/);
+    if (descMatch && descMatch[1]) {
+      description = descMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+    }
+  } catch {
+    description = "";
   }
 
   const chapters = extractChapters(description);
