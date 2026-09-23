@@ -4,6 +4,7 @@ import { existsSync } from "fs";
 import path from "path";
 
 const DATA_FILE = path.join(process.cwd(), "data", "subjects.json");
+const PLANS_FILE = path.join(process.cwd(), "data", "study-plans.json");
 
 interface Subject {
   id: string;
@@ -22,6 +23,22 @@ async function readSubjects(): Promise<Subject[]> {
   return JSON.parse(data);
 }
 
+async function readCachedPlans(): Promise<Record<string, unknown>> {
+  if (!existsSync(PLANS_FILE)) return {};
+  try {
+    return JSON.parse(await readFile(PLANS_FILE, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function hydratePlans(subjects: Subject[], plans: Record<string, unknown>): Subject[] {
+  return subjects.map((s) => ({
+    ...s,
+    videos: s.videos.map((v) => (v.studyPlan ? v : { ...v, studyPlan: plans[v.videoId] ?? null })),
+  }));
+}
+
 async function writeSubjects(subjects: Subject[]) {
   await writeFile(DATA_FILE, JSON.stringify(subjects, null, 2));
 }
@@ -36,7 +53,8 @@ function isAdmin(request: NextRequest): boolean {
 export async function GET() {
   try {
     const subjects = await readSubjects();
-    return Response.json(subjects);
+    const plans = await readCachedPlans();
+    return Response.json(hydratePlans(subjects, plans));
   } catch {
     return Response.json({ error: "Failed to read subjects" }, { status: 500 });
   }

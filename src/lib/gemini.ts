@@ -46,7 +46,7 @@ export interface StudyChapter {
 async function callGroq(apiKey: string, prompt: string, maxTokens: number): Promise<string> {
   let res;
   let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -65,7 +65,12 @@ async function callGroq(apiKey: string, prompt: string, maxTokens: number): Prom
 
     lastError = await res.text();
     if (res.status === 429) {
-      await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+      const retryAfterHeader = res.headers.get("retry-after");
+      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+      const waitSec = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+        ? Math.min(retryAfterSec, 60)
+        : Math.min(5 * 2 ** attempt, 30);
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
       continue;
     }
     throw new Error(`Groq API error: ${lastError}`);
@@ -73,7 +78,7 @@ async function callGroq(apiKey: string, prompt: string, maxTokens: number): Prom
 
   if (!res || !res.ok) {
     if (res?.status === 429) {
-      throw new Error("Rate limit exceeded. Please wait30 seconds and try again.");
+      throw new Error("AI is busy right now (rate limit). Please wait a minute and try again — your video stays selected.");
     }
     throw new Error(`Groq API error: ${lastError}`);
   }
@@ -179,13 +184,15 @@ If there are no chapters, create4-8logical chapters. Make notes detailed and edu
   const chapterList = studyPlan.chapters.map((c) => c.title).join(", ");
 
   const batchConfigs = [
-    { offset: "1-50", difficulty: "17easy,17medium,16hard", years: "2020-2025" },
-    { offset: "51-100", difficulty: "17easy,17medium,16hard", years: "2015-2019" },
-    { offset: "101-150", difficulty: "17easy,17medium,16hard", years: "2010-2014" },
-    { offset: "151-200", difficulty: "17easy,17medium,16hard", years: "2005-2009" },
+    { offset: "1-50", difficulty: "17 easy, 17 medium, 16 hard", years: "2020-2025" },
+    { offset: "51-100", difficulty: "17 easy, 17 medium, 16 hard", years: "2015-2019" },
+    { offset: "101-150", difficulty: "17 easy, 17 medium, 16 hard", years: "2010-2014" },
+    { offset: "151-200", difficulty: "17 easy, 17 medium, 16 hard", years: "2005-2009" },
   ];
 
-  const quizPromises = batchConfigs.map((batch) => {
+  // Run batches sequentially with a delay between them to avoid rate limits.
+  for (let i = 0; i < batchConfigs.length; i++) {
+    const batch = batchConfigs[i];
     const quizPrompt = `You are an SSC exam question expert. Generate50previous year style questions for this topic.
 
 Topic: ${quizTopics}
@@ -215,21 +222,17 @@ Respond with ONLY valid JSON (no markdown):
 
 Generate exactly50questions. Each must have4options, correctAnswer (0-indexed), explanation, difficulty, year, exam.`;
 
-    return callGroq(apiKey, quizPrompt, 16000)
-      .then((text) => {
-        try {
-          const data = JSON.parse(extractJson(text));
-          return (data.quiz || []) as QuizQuestion[];
-        } catch {
-          return [] as QuizQuestion[];
-        }
-      })
-      .catch(() => [] as QuizQuestion[]);
-  });
+    try {
+      const text = await callGroq(apiKey, quizPrompt, 16000);
+      const data = JSON.parse(extractJson(text));
+      studyPlan.quiz.push(...((data.quiz || []) as QuizQuestion[]));
+    } catch {
+      // Skip a failed batch rather than failing the whole plan.
+    }
 
-  const quizBatches = await Promise.all(quizPromises);
-  for (const batch of quizBatches) {
-    studyPlan.quiz.push(...batch);
+    if (i < batchConfigs.length - 1) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
 
   return studyPlan;

@@ -103,6 +103,23 @@ export default function Home() {
       .catch(() => {
         const saved = localStorage.getItem("yt-study-subjects");
         if (saved) setSubjects(JSON.parse(saved));
+      })
+      .finally(() => {
+        fetch("/api/study-plan")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data?.plans) {
+              setSubjects((prev) =>
+                prev.map((s) => ({
+                  ...s,
+                  videos: s.videos.map((v) =>
+                    v.studyPlan ? v : { ...v, studyPlan: data.plans[v.videoId] || null }
+                  ),
+                }))
+              );
+            }
+          })
+          .catch(() => {});
       });
 
     const adminStatus = localStorage.getItem("isAdmin");
@@ -283,12 +300,14 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate study plan");
-      setSubjects((prev) =>
-        prev.map((s) => {
+      setSubjects((prev) => {
+        const updated = prev.map((s) => {
           if (s.id !== subjectId) return s;
           return { ...s, videos: s.videos.map((v) => (v.videoId === videoId ? { ...v, studyPlan: data.studyPlan } : v)) };
-        })
-      );
+        });
+        syncToApi(updated.find((s) => s.id === subjectId));
+        return updated;
+      });
       setActiveVideoId(videoId);
       setOpenSections({ video: true });
     } catch (err: unknown) {
