@@ -45,6 +45,14 @@ interface PlaylistInfo {
   videos: PlaylistVideo[];
 }
 
+interface ScheduleEntry {
+  chapterIndex: number;
+  chapterTitle: string;
+  date: string;
+  time: string;
+  completed: boolean;
+}
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -53,6 +61,9 @@ export default function Home() {
   const [studyPlan, setStudyPlan] = useState<StudyPlan | null>(null);
   const [playlist, setPlaylist] = useState<PlaylistInfo | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
+  const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [activeChapter, setActiveChapter] = useState<number | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -64,6 +75,8 @@ export default function Home() {
     setStudyPlan(null);
     setPlaylist(null);
     setSelectedVideo(null);
+    setSchedule([]);
+    setShowSchedule(false);
 
     try {
       const res = await fetch("/api/study-plan", {
@@ -83,6 +96,7 @@ export default function Home() {
       } else {
         setVideoInfo(data.videoInfo);
         setStudyPlan(data.studyPlan);
+        initSchedule(data.studyPlan);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -97,6 +111,8 @@ export default function Home() {
     setLoading(true);
     setError("");
     setSelectedVideo(videoId);
+    setSchedule([]);
+    setShowSchedule(false);
 
     try {
       const res = await fetch("/api/study-plan", {
@@ -113,6 +129,7 @@ export default function Home() {
 
       setVideoInfo(data.videoInfo);
       setStudyPlan(data.studyPlan);
+      initSchedule(data.studyPlan);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -120,11 +137,58 @@ export default function Home() {
     }
   }
 
+  function initSchedule(plan: StudyPlan) {
+    const today = new Date();
+    const entries: ScheduleEntry[] = plan.chapters.map((ch, i) => {
+      const date = new Date(today);
+      date.setDate(date.getDate() + i);
+      return {
+        chapterIndex: i,
+        chapterTitle: ch.title,
+        date: date.toISOString().split("T")[0],
+        time: "09:00",
+        completed: false,
+      };
+    });
+    setSchedule(entries);
+  }
+
   function handleBackToPlaylist() {
     setVideoInfo(null);
     setStudyPlan(null);
     setSelectedVideo(null);
+    setSchedule([]);
+    setShowSchedule(false);
     setError("");
+  }
+
+  function updateScheduleDate(index: number, date: string) {
+    setSchedule((prev) =>
+      prev.map((entry, i) => (i === index ? { ...entry, date } : entry))
+    );
+  }
+
+  function updateScheduleTime(index: number, time: string) {
+    setSchedule((prev) =>
+      prev.map((entry, i) => (i === index ? { ...entry, time } : entry))
+    );
+  }
+
+  function toggleCompleted(index: number) {
+    setSchedule((prev) =>
+      prev.map((entry, i) =>
+        i === index ? { ...entry, completed: !entry.completed } : entry
+      )
+    );
+  }
+
+  function formatDate(dateStr: string) {
+    const date = new Date(dateStr + "T00:00:00");
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
   }
 
   return (
@@ -185,15 +249,13 @@ export default function Home() {
 
         {playlist && !videoInfo && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-                  {playlist.title}
-                </h2>
-                <p className="text-zinc-500 dark:text-zinc-400">
-                  {playlist.videos.length} videos — select one to generate a study plan
-                </p>
-              </div>
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                {playlist.title}
+              </h2>
+              <p className="text-zinc-500 dark:text-zinc-400">
+                {playlist.videos.length} videos — select one to generate a study plan
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -236,20 +298,26 @@ export default function Home() {
               </button>
             )}
 
-            <section className="flex gap-5 items-start">
-              <img
-                src={videoInfo.thumbnailUrl}
-                alt={videoInfo.title}
-                className="w-64 rounded-lg shadow-md"
-              />
-              <div>
-                <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 mb-1">
-                  {videoInfo.title}
-                </h2>
-                <p className="text-zinc-500 dark:text-zinc-400 mb-3">
-                  by {videoInfo.author}
-                </p>
-                <div className="flex gap-3 text-sm">
+            <section className="rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
+              <div className="aspect-video w-full">
+                <iframe
+                  src={`https://www.youtube.com/embed/${videoInfo.videoId}?start=${activeChapter !== null && studyPlan.chapters[activeChapter] ? getChapterSeconds(studyPlan.chapters[activeChapter].timestamp) : 0}`}
+                  title={videoInfo.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full"
+                />
+              </div>
+              <div className="bg-white dark:bg-zinc-900 px-5 py-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">
+                    {videoInfo.title}
+                  </h2>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    by {videoInfo.author}
+                  </p>
+                </div>
+                <div className="flex gap-2 text-sm">
                   <span className="inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900 px-3 py-1 text-blue-700 dark:text-blue-300 font-medium">
                     {studyPlan.difficulty}
                   </span>
@@ -259,6 +327,91 @@ export default function Home() {
                 </div>
               </div>
             </section>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSchedule(!showSchedule)}
+                className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${
+                  showSchedule
+                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
+                    : "bg-red-600 text-white hover:bg-red-700"
+                }`}
+              >
+                {showSchedule ? "Hide Schedule" : "View Study Schedule"}
+              </button>
+            </div>
+
+            {showSchedule && schedule.length > 0 && (
+              <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+                <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Study Schedule
+                </h3>
+                <div className="space-y-3">
+                  {schedule.map((entry, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-4 p-3 rounded-lg border ${
+                        entry.completed
+                          ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                          : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700"
+                      }`}
+                    >
+                      <button
+                        onClick={() => toggleCompleted(i)}
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                          entry.completed
+                            ? "bg-green-500 border-green-500 text-white"
+                            : "border-zinc-300 dark:border-zinc-600 hover:border-green-400"
+                        }`}
+                      >
+                        {entry.completed && (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium ${
+                          entry.completed
+                            ? "text-green-700 dark:text-green-300 line-through"
+                            : "text-zinc-900 dark:text-zinc-50"
+                        }`}>
+                          {entry.chapterTitle}
+                        </p>
+                      </div>
+                      <input
+                        type="date"
+                        value={entry.date}
+                        onChange={(e) => updateScheduleDate(i, e.target.value)}
+                        className="text-sm border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                      />
+                      <input
+                        type="time"
+                        value={entry.time}
+                        onChange={(e) => updateScheduleTime(i, e.target.value)}
+                        className="text-sm border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    Progress: {schedule.filter((s) => s.completed).length} / {schedule.length} chapters completed
+                  </p>
+                  <div className="mt-2 w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-2">
+                    <div
+                      className="bg-green-500 h-2 rounded-full transition-all"
+                      style={{
+                        width: `${(schedule.filter((s) => s.completed).length / schedule.length) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
 
             <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
               <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-3">
@@ -293,7 +446,12 @@ export default function Home() {
                 {studyPlan.chapters.map((chapter, i) => (
                   <div
                     key={i}
-                    className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5"
+                    className={`rounded-xl border cursor-pointer transition-all ${
+                      activeChapter === i
+                        ? "border-red-400 dark:border-red-600 shadow-md"
+                        : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
+                    } bg-white dark:bg-zinc-900 p-5`}
+                    onClick={() => setActiveChapter(activeChapter === i ? null : i)}
                   >
                     <div className="flex items-center gap-3 mb-3">
                       <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 text-sm font-bold">
@@ -302,9 +460,12 @@ export default function Home() {
                       <span className="text-xs font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-2 py-1 rounded">
                         {chapter.timestamp}
                       </span>
-                      <h4 className="font-semibold text-zinc-900 dark:text-zinc-50">
+                      <h4 className="font-semibold text-zinc-900 dark:text-zinc-50 flex-1">
                         {chapter.title}
                       </h4>
+                      <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                        {activeChapter === i ? "Click to stop" : "Click to play"}
+                      </span>
                     </div>
                     <div className="ml-11">
                       <div className="flex flex-wrap gap-1.5 mb-3">
@@ -352,4 +513,13 @@ export default function Home() {
       </footer>
     </div>
   );
+}
+
+function getChapterSeconds(timestamp: string): number {
+  const parts = timestamp.split(":").reverse();
+  let seconds = 0;
+  if (parts[0]) seconds += parseInt(parts[0]);
+  if (parts[1]) seconds += parseInt(parts[1]) * 60;
+  if (parts[2]) seconds += parseInt(parts[2]) * 3600;
+  return seconds;
 }
