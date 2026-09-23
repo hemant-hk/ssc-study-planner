@@ -33,12 +33,26 @@ interface StudyPlan {
   estimatedStudyTime: string;
 }
 
+interface PlaylistVideo {
+  videoId: string;
+  title: string;
+  thumbnailUrl: string;
+}
+
+interface PlaylistInfo {
+  playlistId: string;
+  title: string;
+  videos: PlaylistVideo[];
+}
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [studyPlan, setStudyPlan] = useState<StudyPlan | null>(null);
+  const [playlist, setPlaylist] = useState<PlaylistInfo | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,12 +62,47 @@ export default function Home() {
     setError("");
     setVideoInfo(null);
     setStudyPlan(null);
+    setPlaylist(null);
+    setSelectedVideo(null);
 
     try {
       const res = await fetch("/api/study-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to generate study plan");
+      }
+
+      if (data.type === "playlist") {
+        setPlaylist(data.playlist);
+      } else {
+        setVideoInfo(data.videoInfo);
+        setStudyPlan(data.studyPlan);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVideoSelect(videoId: string) {
+    if (!playlist) return;
+
+    setLoading(true);
+    setError("");
+    setSelectedVideo(videoId);
+
+    try {
+      const res = await fetch("/api/study-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim(), videoId }),
       });
 
       const data = await res.json();
@@ -69,6 +118,13 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleBackToPlaylist() {
+    setVideoInfo(null);
+    setStudyPlan(null);
+    setSelectedVideo(null);
+    setError("");
   }
 
   return (
@@ -90,7 +146,7 @@ export default function Home() {
             htmlFor="youtube-url"
             className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2"
           >
-            Paste a YouTube video URL
+            Paste a YouTube video or playlist URL
           </label>
           <div className="flex gap-3">
             <input
@@ -98,7 +154,7 @@ export default function Home() {
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
+              placeholder="https://www.youtube.com/watch?v=... or playlist URL"
               className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
             />
             <button
@@ -127,8 +183,59 @@ export default function Home() {
           </div>
         )}
 
+        {playlist && !videoInfo && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                  {playlist.title}
+                </h2>
+                <p className="text-zinc-500 dark:text-zinc-400">
+                  {playlist.videos.length} videos — select one to generate a study plan
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {playlist.videos.map((video) => (
+                <button
+                  key={video.videoId}
+                  onClick={() => handleVideoSelect(video.videoId)}
+                  disabled={loading && selectedVideo === video.videoId}
+                  className="text-left rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden hover:shadow-lg hover:border-red-300 dark:hover:border-red-700 transition-all disabled:opacity-60"
+                >
+                  <img
+                    src={video.thumbnailUrl}
+                    alt={video.title}
+                    className="w-full aspect-video object-cover"
+                  />
+                  <div className="p-3">
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 line-clamp-2">
+                      {video.title}
+                    </h3>
+                    {loading && selectedVideo === video.videoId && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                        Generating study plan...
+                      </p>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {videoInfo && studyPlan && (
           <div className="space-y-8">
+            {playlist && (
+              <button
+                onClick={handleBackToPlaylist}
+                className="text-sm text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
+              >
+                ← Back to playlist ({playlist.title})
+              </button>
+            )}
+
             <section className="flex gap-5 items-start">
               <img
                 src={videoInfo.thumbnailUrl}
