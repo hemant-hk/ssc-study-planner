@@ -269,7 +269,7 @@ export default function Home() {
             <svg className="w-8 h-8 text-red-600" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
             </svg>
-            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">YouTube Study Planner</h1>
+            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Study Planner</h1>
           </div>
           <div className="text-sm text-zinc-500 dark:text-zinc-400">
             {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
@@ -572,7 +572,7 @@ export default function Home() {
       </div>
 
       <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-3">
-        <p className="text-center text-xs text-zinc-400">Powered by YouTube Data API & Groq AI</p>
+        <p className="text-center text-xs text-zinc-400">Powered by AI · Built for SSC Aspirants</p>
       </footer>
     </div>
   );

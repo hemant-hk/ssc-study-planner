@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "YouTube Study Planner",
-  description: "Turn any YouTube video into a structured study plan with AI",
+  title: "Study Planner",
+  description: "Your AI-powered SSC exam preparation companion",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
