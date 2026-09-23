@@ -61,7 +61,7 @@ If there are no chapters in the video, create logical chapters based on the cont
 
   let res;
   let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -77,14 +77,18 @@ If there are no chapters in the video, create logical chapters based on the cont
     if (res.ok) break;
 
     lastError = await res.text();
-    if (res.status === 503 || res.status === 429) {
-      await new Promise((r) => setTimeout(r, (attempt + 1) * 2000));
+    if (res.status === 429 || res.status === 503) {
+      const delay = res.status === 429 ? (attempt + 1) * 5000 : (attempt + 1) * 3000;
+      await new Promise((r) => setTimeout(r, delay));
       continue;
     }
     throw new Error(`Gemini API error: ${lastError}`);
   }
 
   if (!res || !res.ok) {
+    if (res?.status === 429) {
+      throw new Error("API rate limit exceeded. Please wait a minute and try again.");
+    }
     throw new Error(`Gemini API error: ${lastError}`);
   }
 
