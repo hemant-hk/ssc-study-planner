@@ -349,6 +349,9 @@ export default function Home() {
             <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Study Planner</h1>
           </div>
           <div className="flex items-center gap-4">
+            <a href="/mock-test" className="text-sm bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+              Mock Tests
+            </a>
             <span className="text-sm text-zinc-500 dark:text-zinc-400">
               {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
             </span>
