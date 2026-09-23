@@ -57,7 +57,7 @@ Create a comprehensive study plan in the following JSON format (respond with ONL
 
 If there are no chapters in the video, create logical chapters based on the content description (aim for 4-8 chapters). Make the notes detailed and educational.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
 
   const res = await fetch(url, {
     method: "POST",
