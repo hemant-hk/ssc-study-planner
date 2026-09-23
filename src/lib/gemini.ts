@@ -117,6 +117,11 @@ export async function callGroq(apiKey: string, prompt: string, maxTokens: number
 
       lastError = text.slice(0, 200);
       if (res.status === 429) {
+        // A daily token budget is gone for hours; waiting won't help, so
+        // skip straight to the next model (or fail fast) instead of stalling.
+        if (/tokens per day \(TPD\)|limit.*per day/i.test(text)) {
+          continue;
+        }
         hadRateLimit = true;
         const resetHeader = res.headers.get("x-ratelimit-reset-tokens");
         const resetSec = resetHeader ? parseFloat(resetHeader) : NaN;
@@ -137,7 +142,7 @@ export async function callGroq(apiKey: string, prompt: string, maxTokens: number
       // A short pause helps a transient per-minute limit recover; keep it
       // bounded so a burnt-out daily budget fails fast and lets callers
       // fall back to compact generation instead of hanging.
-      const waitSec = Math.min(Math.max(longestReset, 3), 12);
+      const waitSec = Math.min(Math.max(longestReset, 3), 6);
       await new Promise((r) => setTimeout(r, waitSec * 1000));
       continue;
     }
@@ -227,26 +232,11 @@ export async function callGemini(prompt: string, maxTokens: number): Promise<str
   throw new Error(`Gemini error: ${lastError}`);
 }
 
-// Try Groq's multi-model chain first; if it is rate-limited or exhausted,
-// fall back to Gemini, which has a completely separate quota pool.
+// Groq's multi-model chain is fast and reliable; pick the model - if one
+// model's daily budget is exhausted we fail fast and the caller's compact
+// fallback kicks in immediately instead of stalling.
 async function callAI(prompt: string, maxTokens: number): Promise<string> {
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "your_gemini_api_key_here") {
-    return callGroq(getApiKey(), prompt, maxTokens);
-  }
-  // Try candidates across both providers and return the first valid one.
-  const providers = [
-    async () => callGroq(getApiKey(), prompt, maxTokens),
-    async () => callGemini(prompt, maxTokens),
-  ];
-  let lastError = "";
-  for (const attempt of providers) {
-    try {
-      return await attempt();
-    } catch (err: unknown) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
-  }
-  throw new Error(lastError || "AI is busy right now. Please wait a moment and try again.");
+  return callGroq(getApiKey(), prompt, maxTokens);
 }
 
 async function callAndParseJson<T>(
@@ -419,11 +409,13 @@ Generate exactly 10 questions in the quiz array.`;
   const full = await callAndParseArray<QuizQuestion[]>(quizPrompt, 2200, "quiz");
   if (full.length > 0) return full;
 
-  // gpt-oss daily budgets may be exhausted; generate the quiz in small,
-  // qwen-compatible chunks so the output never exceeds the token cap.
+  // gpt-oss daily budgets may be exhausted or the 10-question output can
+  // exceed a model's cap; generate small 2-question chunks that always fit
+  // the ~900-token output limit of fallback models (e.g. qwen).
   const chunks: QuizQuestion[] = [];
-  for (const range of ["1 through 4", "5 through 8", "9 through 10"]) {
-    const chunkPrompt = `You are an SSC exam question expert. Generate 4 previous year style questions (questions ${range}) for this topic.
+  const chunkRanges = ["1 and 2", "3 and 4", "5 and 6", "7 and 8", "9 and 10"];
+  for (const range of chunkRanges) {
+    const chunkPrompt = `You are an SSC exam question expert. Generate 2 previous year style questions (questions ${range}) for this topic. Be concise.
 
 Topic: ${quizTopics}
 Chapters: ${chapterList}
@@ -432,7 +424,7 @@ ${baseContext}
 Include questions from SSC CGL, SSC CHSL, SSC CPO and SSC MTS exams.
 
 ${quizSchema}
-Generate exactly 4 questions in the quiz array.`;
+Generate exactly 2 questions in the quiz array.`;
     const chunk = await callAndParseArray<QuizQuestion[]>(chunkPrompt, 700, "quiz");
     chunks.push(...chunk);
   }

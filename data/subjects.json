@@ -5264,7 +5264,109 @@
         "videoId": "h4_KZPk5_xM",
         "title": "GK FOR SSC EXAMS 2025 | FRB 2.0 | GEOGRAPHY | SOLAR SYSTEM",
         "thumbnailUrl": "https://img.youtube.com/vi/h4_KZPk5_xM/mqdefault.jpg",
-        "studyPlan": null
+        "studyPlan": {
+          "summary": "A free revision video covering the basics of the Solar System for SSC 2025 GK preparation.",
+          "keyTopics": [
+            "Solar System Basics",
+            "Planets",
+            "GK Strategy"
+          ],
+          "chapters": [
+            {
+              "title": "Intro & Batch Overview",
+              "timestamp": "0:00",
+              "keyConcepts": [
+                "FRB 2.0",
+                "SSC Exams Scope"
+              ],
+              "notes": "Understand the scope of the free revision batch for all SSC roles."
+            },
+            {
+              "title": "Solar System Fundamentals",
+              "timestamp": "0:05",
+              "keyConcepts": [
+                "Sun",
+                "Orbits"
+              ],
+              "notes": "Review the central role of the Sun and basic orbital mechanics."
+            },
+            {
+              "title": "Inner Planets",
+              "timestamp": "0:10",
+              "keyConcepts": [
+                "Mercury",
+                "Venus",
+                "Earth",
+                "Mars"
+              ],
+              "notes": "Memorize key facts and order of terrestrial planets."
+            },
+            {
+              "title": "Outer Planets",
+              "timestamp": "0:15",
+              "keyConcepts": [
+                "Jupiter",
+                "Saturn",
+                "Uranus",
+                "Neptune"
+              ],
+              "notes": "Focus on giant planets, rings, and distance from the Sun."
+            },
+            {
+              "title": "Other Celestial Bodies",
+              "timestamp": "0:20",
+              "keyConcepts": [
+                "Asteroids",
+                "Comets",
+                "Moons"
+              ],
+              "notes": "Distinguish between minor planets, comets, and major moons."
+            },
+            {
+              "title": "Revision & Resources",
+              "timestamp": "0:25",
+              "keyConcepts": [
+                "Quiz Links",
+                "Apps"
+              ],
+              "notes": "Join Telegram for daily quizzes and download the Parmar Academy app."
+            }
+          ],
+          "revisionPoints": [
+            "Order of planets from the Sun",
+            "Dwarf planets vs. major planets",
+            "Unique features of each planet (e.g., Saturn's rings)"
+          ],
+          "difficulty": "Beginner",
+          "estimatedStudyTime": "0.5 hours",
+          "quiz": [],
+          "lastYearNotes": [
+            {
+              "topic": "Solar System",
+              "frequency": "asked frequently",
+              "notes": "Planet order and basic characteristics are common in Prelims.",
+              "exams": [
+                "SSC CGL",
+                "SSC CHSL",
+                "SSC MTS"
+              ]
+            }
+          ],
+          "predictedTopics": [
+            {
+              "topic": "Planetary Motion",
+              "probability": "High",
+              "reason": "Fundamental GK topic for static questions.",
+              "preparationTip": "Learn Kepler's laws simply and orbital speeds."
+            },
+            {
+              "topic": "Moons of Planets",
+              "probability": "Medium",
+              "reason": "Often asked in detail in recent years.",
+              "preparationTip": "Focus on largest moons and those with unique features."
+            }
+          ]
+        }
       },
       {
         "videoId": "OA0kBzLbXMk",
