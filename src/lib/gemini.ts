@@ -7,6 +7,7 @@ export interface QuizQuestion {
   explanation: string;
   difficulty: "easy" | "medium" | "hard";
   year?: string;
+  exam?: string;
 }
 
 export interface StudyPlan {
@@ -26,70 +27,7 @@ export interface StudyChapter {
   notes: string;
 }
 
-export async function generateStudyPlan(
-  videoInfo: YouTubeVideoInfo
-): Promise<StudyPlan> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey || apiKey === "your_groq_api_key_here") {
-    throw new Error("GROQ_API_KEY is not configured. Get one free at https://console.groq.com");
-  }
-
-  const chapterContext =
-    videoInfo.chapters.length > 0
-      ? `Video chapters:\n${videoInfo.chapters.map((c) => `- ${c.timestamp} ${c.title}`).join("\n")}`
-      : "No chapters found in the video description.";
-
-  const prompt = `You are an expert study planner for SSC CGL exam preparation. Analyze this YouTube video and create a detailed study plan WITH quiz questions.
-
-Video Title: ${videoInfo.title}
-Video Author: ${videoInfo.author}
-Video Description:
-${videoInfo.description.slice(0, 3000)}
-
-${chapterContext}
-
-Create a comprehensive study plan in the following JSON format (respond with ONLY valid JSON, no markdown, no code blocks):
-{
-  "summary": "A 2-3 sentence overview of what this video teaches",
-  "keyTopics": ["topic1", "topic2", "topic3"],
-  "chapters": [
-    {
-      "title": "Chapter title",
-      "timestamp": "0:00",
-      "keyConcepts": ["concept1", "concept2"],
-      "notes": "Detailed study notes for this section"
-    }
-  ],
-  "revisionPoints": ["point1", "point2", "point3"],
-  "difficulty": "Beginner|Intermediate|Advanced",
-  "estimatedStudyTime": "X hours Y minutes",
-  "quiz": [
-    {
-      "question": "SSC CGL style question based on the video topic",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correctAnswer": 0,
-      "explanation": "Detailed explanation of the correct answer",
-      "difficulty": "easy",
-      "year": "2023",
-      "exam": "SSC CGL"
-    }
-  ]
-}
-
-IMPORTANT QUIZ REQUIREMENTS:
-- Generate50quiz questions based on the video topic
-- Include questions from SSC CGL, SSC CHSL, SSC CPO, SSC MTS, SSC Stenographer, SSC GD exams
-- Cover years2005to2025(20years of SSC exams)
-- Include a mix of difficulties:17easy,17medium,16hard
-- Each question must have4options with1correct answer (correctAnswer is0-indexed)
-- Include the year (e.g., "2023", "2018", "2012") and exam name (e.g., "SSC CGL", "SSC CHSL") for each question
-- Add a detailed explanation for each answer
-- Questions should test factual knowledge, conceptual understanding, and application
-- Try to recall actual previous year questions from SSC exams on this topic
-- Cover all subtopics from the video comprehensively
-
-If there are no chapters in the video, create logical chapters based on the content description (aim for4-8chapters). Make the notes detailed and educational.`;
-
+async function callGroq(apiKey: string, prompt: string, maxTokens: number): Promise<string> {
   let res;
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -103,7 +41,7 @@ If there are no chapters in the video, create logical chapters based on the cont
         model: "openai/gpt-oss-120b",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 16000,
+        max_tokens: maxTokens,
       }),
     });
 
@@ -125,14 +63,126 @@ If there are no chapters in the video, create logical chapters based on the cont
   }
 
   const data = await res.json();
-  const text = data.choices?.[0]?.message?.content;
+  return data.choices?.[0]?.message?.content || "";
+}
 
-  if (!text) throw new Error("No response from AI");
+function extractJson(text: string): string {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Invalid JSON response from AI");
+  return match[0];
+}
 
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Invalid JSON response from AI");
+export async function generateStudyPlan(
+  videoInfo: YouTubeVideoInfo
+): Promise<StudyPlan> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey || apiKey === "your_groq_api_key_here") {
+    throw new Error("GROQ_API_KEY is not configured. Get one free at https://console.groq.com");
+  }
 
-  const parsed = JSON.parse(jsonMatch[0]) as StudyPlan;
-  if (!parsed.quiz) parsed.quiz = [];
-  return parsed;
+  const chapterContext =
+    videoInfo.chapters.length > 0
+      ? `Video chapters:\n${videoInfo.chapters.map((c) => `- ${c.timestamp} ${c.title}`).join("\n")}`
+      : "No chapters found in the video description.";
+
+  const baseContext = `Video Title: ${videoInfo.title}
+Video Author: ${videoInfo.author}
+Video Description:
+${videoInfo.description.slice(0, 2000)}
+${chapterContext}`;
+
+  const studyPrompt = `You are an expert study planner for SSC exam preparation. Analyze this YouTube video and create a detailed study plan.
+
+${baseContext}
+
+Respond with ONLY valid JSON (no markdown, no code blocks):
+{
+  "summary": "A 2-3 sentence overview of what this video teaches",
+  "keyTopics": ["topic1", "topic2", "topic3"],
+  "chapters": [
+    {
+      "title": "Chapter title",
+      "timestamp": "0:00",
+      "keyConcepts": ["concept1", "concept2"],
+      "notes": "Detailed study notes for this section"
+    }
+  ],
+  "revisionPoints": ["point1", "point2", "point3"],
+  "difficulty": "Beginner|Intermediate|Advanced",
+  "estimatedStudyTime": "X hours Y minutes"
+}
+
+If there are no chapters, create4-8logical chapters. Make notes detailed and educational.`;
+
+  const studyText = await callGroq(apiKey, studyPrompt, 4096);
+  const studyData = JSON.parse(extractJson(studyText));
+
+  const studyPlan: StudyPlan = {
+    summary: studyData.summary || "",
+    keyTopics: studyData.keyTopics || [],
+    chapters: studyData.chapters || [],
+    revisionPoints: studyData.revisionPoints || [],
+    difficulty: studyData.difficulty || "Intermediate",
+    estimatedStudyTime: studyData.estimatedStudyTime || "1 hour",
+    quiz: [],
+  };
+
+  const quizTopics = studyPlan.keyTopics.join(", ");
+  const chapterList = studyPlan.chapters.map((c) => c.title).join(", ");
+
+  const batchConfigs = [
+    { offset: "1-50", difficulty: "17easy,17medium,16hard", years: "2020-2025" },
+    { offset: "51-100", difficulty: "17easy,17medium,16hard", years: "2015-2019" },
+    { offset: "101-150", difficulty: "17easy,17medium,16hard", years: "2010-2014" },
+    { offset: "151-200", difficulty: "17easy,17medium,16hard", years: "2005-2009" },
+  ];
+
+  const quizPromises = batchConfigs.map((batch) => {
+    const quizPrompt = `You are an SSC exam question expert. Generate50previous year style questions for this topic.
+
+Topic: ${quizTopics}
+Chapters: ${chapterList}
+${baseContext}
+
+Questions ${batch.offset} - Focus on years ${batch.years}
+Difficulty mix: ${batch.difficulty}
+
+Include questions from SSC CGL, SSC CHSL, SSC CPO, SSC MTS, SSC Stenographer, SSC GD exams.
+Recall actual previous year questions from SSC exams on these topics.
+
+Respond with ONLY valid JSON (no markdown):
+{
+  "quiz": [
+    {
+      "question": "Question text",
+      "options": ["A", "B", "C", "D"],
+      "correctAnswer": 0,
+      "explanation": "Detailed explanation",
+      "difficulty": "easy|medium|hard",
+      "year": "2023",
+      "exam": "SSC CGL"
+    }
+  ]
+}
+
+Generate exactly50questions. Each must have4options, correctAnswer (0-indexed), explanation, difficulty, year, exam.`;
+
+    return callGroq(apiKey, quizPrompt, 16000)
+      .then((text) => {
+        try {
+          const data = JSON.parse(extractJson(text));
+          return (data.quiz || []) as QuizQuestion[];
+        } catch {
+          return [] as QuizQuestion[];
+        }
+      })
+      .catch(() => [] as QuizQuestion[]);
+  });
+
+  const quizBatches = await Promise.all(quizPromises);
+  for (const batch of quizBatches) {
+    studyPlan.quiz.push(...batch);
+  }
+
+  return studyPlan;
 }
