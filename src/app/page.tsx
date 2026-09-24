@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import DoubtDrawer from "@/components/DoubtDrawer";
 import DiscussionThread from "@/components/DiscussionThread";
 import NotesButton from "@/components/NotesButton";
-import { getCachedPlans, setCachedPlan, getCachedVideoInfo, setCachedVideoInfo } from "@/lib/study-cache";
+import { getCachedPlan, getCachedPlans, setCachedPlan, deleteCachedPlan } from "@/lib/study-cache";
 
 interface VideoInfo {
   videoId: string;
@@ -106,11 +106,11 @@ export default function Home() {
   const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
 
   useEffect(() => {
-    const localPlans = getCachedPlans();
     fetch("/api/subjects")
       .then((res) => res.json())
-      .then((data) => {
+      .then(async (data) => {
         if (Array.isArray(data)) {
+          const localPlans = await getCachedPlans();
           setSubjects(
             (data as Subject[]).map((s) => ({
               ...s,
@@ -314,8 +314,7 @@ export default function Home() {
         setPlaylistProgress(null);
         setUrl("");
       } else {
-        setCachedVideoInfo(data.videoInfo.videoId, data.videoInfo);
-        setCachedPlan(data.videoInfo.videoId, data.studyPlan);
+        await setCachedPlan(data.videoInfo.videoId, data.studyPlan);
         const newVideo: SubjectVideo = {
           videoId: data.videoInfo.videoId,
           title: data.videoInfo.title,
@@ -352,24 +351,19 @@ export default function Home() {
     setGeneratingPlan(videoId);
     setError("");
     try {
-      const cachedPlan = getCachedPlans()[videoId];
+      const cachedPlan = await getCachedPlan(videoId);
       if (cachedPlan) {
         applyPlanToVideo(subjectId, videoId, cachedPlan);
         return;
       }
-      const cachedInfo = getCachedVideoInfo()[videoId];
       const res = await fetch("/api/study-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: `https://youtube.com/watch?v=${videoId}`,
-          ...(cachedInfo ? { videoInfo: cachedInfo } : {}),
-        }),
+        body: JSON.stringify({ url: `https://youtube.com/watch?v=${videoId}` }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate study plan");
-      setCachedVideoInfo(videoId, data.videoInfo);
-      setCachedPlan(videoId, data.studyPlan);
+      await setCachedPlan(videoId, data.studyPlan);
       applyPlanToVideo(subjectId, videoId, data.studyPlan);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate study plan");
@@ -395,25 +389,23 @@ export default function Home() {
     setGeneratingQuiz(true);
     setError("");
     try {
-      const cachedPlan = getCachedPlans()[videoId];
+      const cachedPlan = await getCachedPlan(videoId);
       if (cachedPlan?.quiz && cachedPlan.quiz.length > 0) {
         applyPlanToVideo(subjectId, videoId, cachedPlan);
         return;
       }
-      const cachedInfo = getCachedVideoInfo()[videoId];
       const res = await fetch("/api/study-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: `https://youtube.com/watch?v=${videoId}`,
           style: "quiz",
-          ...(cachedInfo ? { videoInfo: cachedInfo } : {}),
           ...(cachedPlan ? { plan: cachedPlan } : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate quiz");
-      setCachedPlan(videoId, data.studyPlan);
+      await setCachedPlan(videoId, data.studyPlan);
       applyPlanToVideo(subjectId, videoId, data.studyPlan);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate quiz");
@@ -431,6 +423,7 @@ export default function Home() {
       syncToApi(updated.find((s) => s.id === subjectId));
       return updated;
     });
+    deleteCachedPlan(videoId);
     if (activeVideoId === videoId) setActiveVideoId(null);
   }
 
