@@ -5,7 +5,6 @@ import path from "path";
 import { isAdminBearer } from "@/lib/admin-password";
 
 const DATA_FILE = path.join(process.cwd(), "data", "subjects.json");
-const PLANS_FILE = path.join(process.cwd(), "data", "study-plans.json");
 
 interface Subject {
   id: string;
@@ -24,22 +23,6 @@ async function readSubjects(): Promise<Subject[]> {
   return JSON.parse(data);
 }
 
-async function readCachedPlans(): Promise<Record<string, unknown>> {
-  if (!existsSync(PLANS_FILE)) return {};
-  try {
-    return JSON.parse(await readFile(PLANS_FILE, "utf-8"));
-  } catch {
-    return {};
-  }
-}
-
-function hydratePlans(subjects: Subject[], plans: Record<string, unknown>): Subject[] {
-  return subjects.map((s) => ({
-    ...s,
-    videos: s.videos.map((v) => (v.studyPlan ? v : { ...v, studyPlan: plans[v.videoId] ?? null })),
-  }));
-}
-
 async function writeSubjects(subjects: Subject[]) {
   await writeFile(DATA_FILE, JSON.stringify(subjects, null, 2));
 }
@@ -51,8 +34,7 @@ function isAdmin(request: NextRequest): Promise<boolean> {
 export async function GET() {
   try {
     const subjects = await readSubjects();
-    const plans = await readCachedPlans();
-    return Response.json(hydratePlans(subjects, plans));
+    return Response.json(subjects);
   } catch {
     return Response.json({ error: "Failed to read subjects" }, { status: 500 });
   }

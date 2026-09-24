@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import DoubtDrawer from "@/components/DoubtDrawer";
 import DiscussionThread from "@/components/DiscussionThread";
 import NotesButton from "@/components/NotesButton";
+import { getCachedPlans, setCachedPlan, getCachedVideoInfo, setCachedVideoInfo } from "@/lib/study-cache";
 
 interface VideoInfo {
   videoId: string;
@@ -105,31 +106,24 @@ export default function Home() {
   const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
 
   useEffect(() => {
+    const localPlans = getCachedPlans();
     fetch("/api/subjects")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setSubjects(data);
+        if (Array.isArray(data)) {
+          setSubjects(
+            (data as Subject[]).map((s) => ({
+              ...s,
+              videos: s.videos.map((v) =>
+                v.studyPlan ? v : { ...v, studyPlan: localPlans[v.videoId] || null }
+              ),
+            }))
+          );
+        }
       })
       .catch(() => {
         const saved = localStorage.getItem("yt-study-subjects");
         if (saved) setSubjects(JSON.parse(saved));
-      })
-      .finally(() => {
-        fetch("/api/study-plan")
-          .then((res) => res.json())
-          .then((data) => {
-            if (data?.plans) {
-              setSubjects((prev) =>
-                prev.map((s) => ({
-                  ...s,
-                  videos: s.videos.map((v) =>
-                    v.studyPlan ? v : { ...v, studyPlan: data.plans[v.videoId] || null }
-                  ),
-                }))
-              );
-            }
-          })
-          .catch(() => {});
       });
 
     const adminStatus = localStorage.getItem("isAdmin");
@@ -320,6 +314,8 @@ export default function Home() {
         setPlaylistProgress(null);
         setUrl("");
       } else {
+        setCachedVideoInfo(data.videoInfo.videoId, data.videoInfo);
+        setCachedPlan(data.videoInfo.videoId, data.studyPlan);
         const newVideo: SubjectVideo = {
           videoId: data.videoInfo.videoId,
           title: data.videoInfo.title,
@@ -356,26 +352,25 @@ export default function Home() {
     setGeneratingPlan(videoId);
     setError("");
     try {
+      const cachedPlan = getCachedPlans()[videoId];
+      if (cachedPlan) {
+        applyPlanToVideo(subjectId, videoId, cachedPlan);
+        return;
+      }
+      const cachedInfo = getCachedVideoInfo()[videoId];
       const res = await fetch("/api/study-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: `https://youtube.com/watch?v=${videoId}` }),
+        body: JSON.stringify({
+          url: `https://youtube.com/watch?v=${videoId}`,
+          ...(cachedInfo ? { videoInfo: cachedInfo } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate study plan");
-      const applyPlan = (plan: StudyPlan) => {
-        setSubjects((prev) => {
-          const updated = prev.map((s) => {
-            if (s.id !== subjectId) return s;
-            return { ...s, videos: s.videos.map((v) => (v.videoId === videoId ? { ...v, studyPlan: plan } : v)) };
-          });
-          syncToApi(updated.find((s) => s.id === subjectId));
-          return updated;
-        });
-        setActiveVideoId(videoId);
-        setOpenSections({ video: true });
-      };
-      applyPlan(data.studyPlan);
+      setCachedVideoInfo(videoId, data.videoInfo);
+      setCachedPlan(videoId, data.studyPlan);
+      applyPlanToVideo(subjectId, videoId, data.studyPlan);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate study plan");
     } finally {
@@ -383,25 +378,43 @@ export default function Home() {
     }
   }
 
+  function applyPlanToVideo(subjectId: string, videoId: string, plan: StudyPlan) {
+    setSubjects((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id !== subjectId) return s;
+        return { ...s, videos: s.videos.map((v) => (v.videoId === videoId ? { ...v, studyPlan: plan } : v)) };
+      });
+      syncToApi(updated.find((s) => s.id === subjectId));
+      return updated;
+    });
+    setActiveVideoId(videoId);
+    setOpenSections({ video: true });
+  }
+
   async function generateQuizForVideo(subjectId: string, videoId: string) {
     setGeneratingQuiz(true);
     setError("");
     try {
+      const cachedPlan = getCachedPlans()[videoId];
+      if (cachedPlan?.quiz && cachedPlan.quiz.length > 0) {
+        applyPlanToVideo(subjectId, videoId, cachedPlan);
+        return;
+      }
+      const cachedInfo = getCachedVideoInfo()[videoId];
       const res = await fetch("/api/study-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: `https://youtube.com/watch?v=${videoId}`, style: "quiz" }),
+        body: JSON.stringify({
+          url: `https://youtube.com/watch?v=${videoId}`,
+          style: "quiz",
+          ...(cachedInfo ? { videoInfo: cachedInfo } : {}),
+          ...(cachedPlan ? { plan: cachedPlan } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate quiz");
-      setSubjects((prev) => {
-        const updated = prev.map((s) => {
-          if (s.id !== subjectId) return s;
-          return { ...s, videos: s.videos.map((v) => (v.videoId === videoId ? { ...v, studyPlan: data.studyPlan } : v)) };
-        });
-        syncToApi(updated.find((s) => s.id === subjectId));
-        return updated;
-      });
+      setCachedPlan(videoId, data.studyPlan);
+      applyPlanToVideo(subjectId, videoId, data.studyPlan);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate quiz");
     } finally {
