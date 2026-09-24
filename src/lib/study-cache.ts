@@ -1,51 +1,71 @@
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { StudyPlan } from "./gemini";
-import type { YouTubeVideoInfo } from "./youtube";
 
-const PLANS_KEY = "yt-study-plans";
-const VIDEO_INFO_KEY = "yt-study-video-info";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Study plans and video metadata are cached in localStorage rather than on the
-// server. Serverless runtimes (e.g. Vercel) mount the filesystem read-only, so
-// writing data/*.json would throw EROFS. Keeping the cache on the client also
-// lets plans survive across sessions without touching the filesystem.
+// Study plans are stored in the Supabase `study_cache` table instead of local
+// files (read-only on serverless runtimes like Vercel) or localStorage (lost on
+// other devices). Rows: key = videoId, data = plan (jsonb).
+//
+// The anon key is safe to use from the browser; make sure the table grants the
+// anon role SELECT/INSERT/UPDATE/DELETE via RLS for it to work in production.
+const TABLE = "study_cache";
 
-function readMap<T>(key: string): Record<string, T> {
-  if (typeof window === "undefined") return {};
+let client: SupabaseClient | null = null;
+
+function getClient(): SupabaseClient | null {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  if (!client) {
+    client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return client;
+}
+
+export async function getCachedPlans(): Promise<Record<string, StudyPlan>> {
+  const db = getClient();
+  if (!db) return {};
   try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    const { data, error } = await db.from(TABLE).select("key, data");
+    if (error || !data) return {};
+    const plans: Record<string, StudyPlan> = {};
+    for (const row of data) {
+      if (row.key) plans[row.key as string] = row.data as StudyPlan;
+    }
+    return plans;
   } catch {
     return {};
   }
 }
 
-function writeMap<T>(key: string, map: Record<string, T>): void {
-  if (typeof window === "undefined") return;
+export async function getCachedPlan(videoId: string): Promise<StudyPlan | null> {
+  const db = getClient();
+  if (!db) return null;
   try {
-    window.localStorage.setItem(key, JSON.stringify(map));
+    const { data, error } = await db.from(TABLE).select("data").eq("key", videoId).maybeSingle();
+    if (error || !data) return null;
+    return data.data as StudyPlan;
   } catch {
-    // Storage unavailable or full (e.g. private mode); cache is best-effort.
+    return null;
   }
 }
 
-export function getCachedPlans(): Record<string, StudyPlan> {
-  return readMap<StudyPlan>(PLANS_KEY);
+export async function setCachedPlan(videoId: string, plan: StudyPlan): Promise<void> {
+  const db = getClient();
+  if (!db) return;
+  try {
+    await db.from(TABLE).upsert({ key: videoId, data: plan }, { onConflict: "key" });
+  } catch {
+    // Cache writes are best-effort; generation still succeeds if this fails.
+  }
 }
 
-export function setCachedPlan(videoId: string, plan: StudyPlan): void {
-  const plans = getCachedPlans();
-  plans[videoId] = plan;
-  writeMap(PLANS_KEY, plans);
-}
-
-export function getCachedVideoInfo(): Record<string, YouTubeVideoInfo> {
-  return readMap<YouTubeVideoInfo>(VIDEO_INFO_KEY);
-}
-
-export function setCachedVideoInfo(videoId: string, info: YouTubeVideoInfo): void {
-  const map = getCachedVideoInfo();
-  map[videoId] = info;
-  writeMap(VIDEO_INFO_KEY, map);
+export async function deleteCachedPlan(videoId: string): Promise<void> {
+  const db = getClient();
+  if (!db) return;
+  try {
+    await db.from(TABLE).delete().eq("key", videoId);
+  } catch {
+    // Best-effort cleanup.
+  }
 }
