@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
+import { isAdminBearer } from "@/lib/admin-password";
 
 const DATA_FILE = path.join(process.cwd(), "data", "subjects.json");
-const PLANS_FILE = path.join(process.cwd(), "data", "study-plans.json");
 
 interface Subject {
   id: string;
@@ -23,45 +23,25 @@ async function readSubjects(): Promise<Subject[]> {
   return JSON.parse(data);
 }
 
-async function readCachedPlans(): Promise<Record<string, unknown>> {
-  if (!existsSync(PLANS_FILE)) return {};
-  try {
-    return JSON.parse(await readFile(PLANS_FILE, "utf-8"));
-  } catch {
-    return {};
-  }
-}
-
-function hydratePlans(subjects: Subject[], plans: Record<string, unknown>): Subject[] {
-  return subjects.map((s) => ({
-    ...s,
-    videos: s.videos.map((v) => (v.studyPlan ? v : { ...v, studyPlan: plans[v.videoId] ?? null })),
-  }));
-}
-
 async function writeSubjects(subjects: Subject[]) {
   await writeFile(DATA_FILE, JSON.stringify(subjects, null, 2));
 }
 
-function isAdmin(request: NextRequest): boolean {
-  const authHeader = request.headers.get("authorization");
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword || !authHeader) return false;
-  return authHeader === `Bearer ${adminPassword}`;
+function isAdmin(request: NextRequest): Promise<boolean> {
+  return isAdminBearer(request.headers.get("authorization"));
 }
 
 export async function GET() {
   try {
     const subjects = await readSubjects();
-    const plans = await readCachedPlans();
-    return Response.json(hydratePlans(subjects, plans));
+    return Response.json(subjects);
   } catch {
     return Response.json({ error: "Failed to read subjects" }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAdmin(request)) {
+  if (!(await isAdmin(request))) {
     return Response.json({ error: "Admin access required" }, { status: 403 });
   }
 
@@ -77,7 +57,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  if (!isAdmin(request)) {
+  if (!(await isAdmin(request))) {
     return Response.json({ error: "Admin access required" }, { status: 403 });
   }
 
@@ -98,7 +78,7 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!isAdmin(request)) {
+  if (!(await isAdmin(request))) {
     return Response.json({ error: "Admin access required" }, { status: 403 });
   }
 

@@ -45,3 +45,4 @@ next-env.d.ts
 /data/video-info.json
 /data/notes.json
 /data/discussions.json
+/data/admin-password.json

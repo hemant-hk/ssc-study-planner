@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import DoubtDrawer from "@/components/DoubtDrawer";
 import DiscussionThread from "@/components/DiscussionThread";
 import NotesButton from "@/components/NotesButton";
+import { getCachedPlans, setCachedPlan, getCachedVideoInfo, setCachedVideoInfo } from "@/lib/study-cache";
 
 interface VideoInfo {
   videoId: string;
@@ -97,33 +98,32 @@ export default function Home() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changePasswordError, setChangePasswordError] = useState("");
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
 
   useEffect(() => {
+    const localPlans = getCachedPlans();
     fetch("/api/subjects")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setSubjects(data);
+        if (Array.isArray(data)) {
+          setSubjects(
+            (data as Subject[]).map((s) => ({
+              ...s,
+              videos: s.videos.map((v) =>
+                v.studyPlan ? v : { ...v, studyPlan: localPlans[v.videoId] || null }
+              ),
+            }))
+          );
+        }
       })
       .catch(() => {
         const saved = localStorage.getItem("yt-study-subjects");
         if (saved) setSubjects(JSON.parse(saved));
-      })
-      .finally(() => {
-        fetch("/api/study-plan")
-          .then((res) => res.json())
-          .then((data) => {
-            if (data?.plans) {
-              setSubjects((prev) =>
-                prev.map((s) => ({
-                  ...s,
-                  videos: s.videos.map((v) =>
-                    v.studyPlan ? v : { ...v, studyPlan: data.plans[v.videoId] || null }
-                  ),
-                }))
-              );
-            }
-          })
-          .catch(() => {});
       });
 
     const adminStatus = localStorage.getItem("isAdmin");
@@ -178,6 +178,43 @@ export default function Home() {
     setIsAdmin(false);
     localStorage.removeItem("isAdmin");
     localStorage.removeItem("adminToken");
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setChangePasswordError("");
+    setChangePasswordSuccess("");
+    if (newPassword !== confirmPassword) {
+      setChangePasswordError("New passwords do not match");
+      return;
+    }
+    if (newPassword.length < 4) {
+      setChangePasswordError("New password must be at least 4 characters");
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAdminToken()}`,
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChangePasswordSuccess("Password updated successfully");
+        localStorage.setItem("adminToken", newPassword);
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setTimeout(() => setShowChangePassword(false), 1200);
+      } else {
+        setChangePasswordError(data?.error || "Failed to change password");
+      }
+    } catch {
+      setChangePasswordError("Failed to change password");
+    }
   }
 
   function getAdminToken() {
@@ -277,6 +314,8 @@ export default function Home() {
         setPlaylistProgress(null);
         setUrl("");
       } else {
+        setCachedVideoInfo(data.videoInfo.videoId, data.videoInfo);
+        setCachedPlan(data.videoInfo.videoId, data.studyPlan);
         const newVideo: SubjectVideo = {
           videoId: data.videoInfo.videoId,
           title: data.videoInfo.title,
@@ -313,26 +352,25 @@ export default function Home() {
     setGeneratingPlan(videoId);
     setError("");
     try {
+      const cachedPlan = getCachedPlans()[videoId];
+      if (cachedPlan) {
+        applyPlanToVideo(subjectId, videoId, cachedPlan);
+        return;
+      }
+      const cachedInfo = getCachedVideoInfo()[videoId];
       const res = await fetch("/api/study-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: `https://youtube.com/watch?v=${videoId}` }),
+        body: JSON.stringify({
+          url: `https://youtube.com/watch?v=${videoId}`,
+          ...(cachedInfo ? { videoInfo: cachedInfo } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate study plan");
-      const applyPlan = (plan: StudyPlan) => {
-        setSubjects((prev) => {
-          const updated = prev.map((s) => {
-            if (s.id !== subjectId) return s;
-            return { ...s, videos: s.videos.map((v) => (v.videoId === videoId ? { ...v, studyPlan: plan } : v)) };
-          });
-          syncToApi(updated.find((s) => s.id === subjectId));
-          return updated;
-        });
-        setActiveVideoId(videoId);
-        setOpenSections({ video: true });
-      };
-      applyPlan(data.studyPlan);
+      setCachedVideoInfo(videoId, data.videoInfo);
+      setCachedPlan(videoId, data.studyPlan);
+      applyPlanToVideo(subjectId, videoId, data.studyPlan);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate study plan");
     } finally {
@@ -340,25 +378,43 @@ export default function Home() {
     }
   }
 
+  function applyPlanToVideo(subjectId: string, videoId: string, plan: StudyPlan) {
+    setSubjects((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id !== subjectId) return s;
+        return { ...s, videos: s.videos.map((v) => (v.videoId === videoId ? { ...v, studyPlan: plan } : v)) };
+      });
+      syncToApi(updated.find((s) => s.id === subjectId));
+      return updated;
+    });
+    setActiveVideoId(videoId);
+    setOpenSections({ video: true });
+  }
+
   async function generateQuizForVideo(subjectId: string, videoId: string) {
     setGeneratingQuiz(true);
     setError("");
     try {
+      const cachedPlan = getCachedPlans()[videoId];
+      if (cachedPlan?.quiz && cachedPlan.quiz.length > 0) {
+        applyPlanToVideo(subjectId, videoId, cachedPlan);
+        return;
+      }
+      const cachedInfo = getCachedVideoInfo()[videoId];
       const res = await fetch("/api/study-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: `https://youtube.com/watch?v=${videoId}`, style: "quiz" }),
+        body: JSON.stringify({
+          url: `https://youtube.com/watch?v=${videoId}`,
+          style: "quiz",
+          ...(cachedInfo ? { videoInfo: cachedInfo } : {}),
+          ...(cachedPlan ? { plan: cachedPlan } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate quiz");
-      setSubjects((prev) => {
-        const updated = prev.map((s) => {
-          if (s.id !== subjectId) return s;
-          return { ...s, videos: s.videos.map((v) => (v.videoId === videoId ? { ...v, studyPlan: data.studyPlan } : v)) };
-        });
-        syncToApi(updated.find((s) => s.id === subjectId));
-        return updated;
-      });
+      setCachedPlan(videoId, data.studyPlan);
+      applyPlanToVideo(subjectId, videoId, data.studyPlan);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate quiz");
     } finally {
@@ -438,6 +494,7 @@ export default function Home() {
             {isAdmin ? (
               <div className="flex items-center gap-2">
                 <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full">Admin</span>
+                <button onClick={() => { setShowChangePassword(true); setChangePasswordError(""); setChangePasswordSuccess(""); }} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">Change Password</button>
                 <button onClick={handleLogout} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">Logout</button>
               </div>
             ) : (
@@ -809,6 +866,48 @@ export default function Home() {
                   Login
                 </button>
                 <button type="button" onClick={() => { setShowLogin(false); setLoginPassword(""); setLoginError(""); }} className="flex-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 py-2.5 rounded-lg font-medium hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showChangePassword && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-4">Change Password</h3>
+            <form onSubmit={handleChangePassword}>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Current password"
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 text-sm mb-3"
+                autoFocus
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password (min 4 characters)"
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 text-sm mb-3"
+              />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 text-sm mb-3"
+              />
+              {changePasswordError && <p className="text-xs text-red-500 mb-3">{changePasswordError}</p>}
+              {changePasswordSuccess && <p className="text-xs text-green-500 mb-3">{changePasswordSuccess}</p>}
+              <div className="flex gap-3">
+                <button type="submit" className="flex-1 bg-red-600 text-white py-2.5 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                  Update
+                </button>
+                <button type="button" onClick={() => { setShowChangePassword(false); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setChangePasswordError(""); setChangePasswordSuccess(""); }} className="flex-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 py-2.5 rounded-lg font-medium hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors">
                   Cancel
                 </button>
               </div>
