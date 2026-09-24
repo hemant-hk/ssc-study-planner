@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
+import { isAdminBearer } from "@/lib/admin-password";
 
 const DATA_FILE = path.join(process.cwd(), "data", "subjects.json");
 const PLANS_FILE = path.join(process.cwd(), "data", "study-plans.json");
@@ -43,11 +44,8 @@ async function writeSubjects(subjects: Subject[]) {
   await writeFile(DATA_FILE, JSON.stringify(subjects, null, 2));
 }
 
-function isAdmin(request: NextRequest): boolean {
-  const authHeader = request.headers.get("authorization");
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword || !authHeader) return false;
-  return authHeader === `Bearer ${adminPassword}`;
+function isAdmin(request: NextRequest): Promise<boolean> {
+  return isAdminBearer(request.headers.get("authorization"));
 }
 
 export async function GET() {
@@ -61,7 +59,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAdmin(request)) {
+  if (!(await isAdmin(request))) {
     return Response.json({ error: "Admin access required" }, { status: 403 });
   }
 
@@ -77,7 +75,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  if (!isAdmin(request)) {
+  if (!(await isAdmin(request))) {
     return Response.json({ error: "Admin access required" }, { status: 403 });
   }
 
@@ -98,7 +96,7 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!isAdmin(request)) {
+  if (!(await isAdmin(request))) {
     return Response.json({ error: "Admin access required" }, { status: 403 });
   }
 
