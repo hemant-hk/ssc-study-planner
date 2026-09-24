@@ -10,7 +10,9 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Admin password not configured" }, { status: 500 });
     }
 
-    if (password === adminPassword) {
+    // Trim stray whitespace (mobile keyboards often inject trailing spaces)
+    // but keep the comparison case-sensitive.
+    if (typeof password === "string" && password.trim() === adminPassword.trim()) {
       return Response.json({ success: true, message: "Login successful" });
     } else {
       return Response.json({ error: "Invalid password" }, { status: 401 });

@@ -15,8 +15,8 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
-  const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+  const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword.trim() : "";
+  const newPassword = typeof body.newPassword === "string" ? body.newPassword.trim() : "";
 
   if (!currentPassword) {
     return Response.json({ error: "Current password is required" }, { status: 400 });
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Admin access required" }, { status: 403 });
   }
 
-  const active = await getAdminPassword();
+  const active = (await getAdminPassword()).trim();
   if (currentPassword !== active) {
     return Response.json({ error: "Current password is incorrect" }, { status: 401 });
   }
