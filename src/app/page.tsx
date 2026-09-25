@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import DoubtDrawer from "@/components/DoubtDrawer";
 import DiscussionThread from "@/components/DiscussionThread";
 import NotesButton from "@/components/NotesButton";
@@ -89,6 +89,8 @@ export default function Home() {
   const [playlistProgress, setPlaylistProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  // Guard against duplicate/rapid study-plan requests for the same video.
+  const inFlightPlans = useRef<Set<string>>(new Set());
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
@@ -348,6 +350,8 @@ export default function Home() {
   }
 
   async function generateStudyPlanForVideo(subjectId: string, videoId: string) {
+    if (inFlightPlans.current.has(videoId)) return;
+    inFlightPlans.current.add(videoId);
     setGeneratingPlan(videoId);
     setError("");
     try {
@@ -366,8 +370,10 @@ export default function Home() {
       await setCachedPlan(videoId, data.studyPlan);
       applyPlanToVideo(subjectId, videoId, data.studyPlan);
     } catch (err: unknown) {
+      inFlightPlans.current.delete(videoId);
       setError(err instanceof Error ? err.message : "Failed to generate study plan");
     } finally {
+      inFlightPlans.current.delete(videoId);
       setGeneratingPlan(null);
     }
   }
@@ -386,6 +392,8 @@ export default function Home() {
   }
 
   async function generateQuizForVideo(subjectId: string, videoId: string) {
+    if (inFlightPlans.current.has(videoId)) return;
+    inFlightPlans.current.add(videoId);
     setGeneratingQuiz(true);
     setError("");
     try {
@@ -408,8 +416,10 @@ export default function Home() {
       await setCachedPlan(videoId, data.studyPlan);
       applyPlanToVideo(subjectId, videoId, data.studyPlan);
     } catch (err: unknown) {
+      inFlightPlans.current.delete(videoId);
       setError(err instanceof Error ? err.message : "Failed to generate quiz");
     } finally {
+      inFlightPlans.current.delete(videoId);
       setGeneratingQuiz(false);
     }
   }
