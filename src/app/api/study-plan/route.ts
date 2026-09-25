@@ -6,7 +6,7 @@ import {
   fetchPlaylistInfo,
 } from "@/lib/youtube";
 import type { YouTubeVideoInfo } from "@/lib/youtube";
-import { generateStudyPlan, generateQuiz, type StudyPlan } from "@/lib/gemini";
+import { generateStudyPlan, generateQuiz, AIProviderError, type StudyPlan } from "@/lib/gemini";
 
 // No server-side filesystem access here. Serverless runtimes (Vercel) mount
 // the filesystem read-only, so writing e.g. data/study-plans.json would throw
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ type: "video", videoInfo, studyPlan });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Something went wrong";
-    return Response.json({ error: message }, { status: 500 });
+    const status = err instanceof AIProviderError ? err.status : 500;
+    return Response.json({ error: message }, { status });
   }
 }

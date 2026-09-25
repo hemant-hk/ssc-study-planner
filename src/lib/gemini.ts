@@ -43,6 +43,17 @@ export interface StudyChapter {
   notes: string;
 }
 
+export class AIProviderError extends Error {
+  status: number;
+  constructor(message: string, status = 500) {
+    super(message);
+    this.name = "AIProviderError";
+    this.status = status;
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"];
 const MODEL_TOKEN_CAPS: Record<string, number> = { "qwen/qwen3.8-27b": 900 };
 
@@ -51,6 +62,20 @@ function modelsFor(maxTokens: number): string[] {
   return maxTokens <= 900
     ? GROQ_MODELS
     : GROQ_MODELS.filter((m) => m !== "qwen/qwen3.8-27b");
+}
+
+// Strip markdown fences (```json ... ``` or ``` ... ```) and preamble, then
+// return the first balanced JSON object so parsing never sees prose.
+function sanitizeJson(text: string): string {
+  let t = (text || "").trim();
+  const fenced = t.match(/^```(?:json)?\s*([\s\S]*?)\s*```\s*$/i);
+  if (fenced) t = fenced[1].trim();
+  const block = t.match(/\{[\s\S]*\}/);
+  if (!block) {
+    const snippet = t.slice(0, 200);
+    throw new AIProviderError(`AI gave a non-JSON response: ${snippet}`, 502);
+  }
+  return block[0];
 }
 
 export interface CallGroqOptions {
@@ -67,16 +92,17 @@ export async function callGroq(
   maxTokens: number,
   options?: CallGroqOptions
 ): Promise<string> {
-  let lastError = "Unknown error";
   const chain = options?.models && options.models.length > 0 ? options.models : modelsFor(maxTokens);
   const requireJSON = options?.requireJSON ?? true;
-  // Two passes over all models so a temporary rate limit (429) doesn't block
-  // an otherwise-clean model waiting on a different budget.
+  let lastError = "Unknown error";
+  let lastStatus = 500;
+  let sawRateLimit = false;
+  // Max 1-2 retries with exponential backoff: a transient per-minute 429
+  // recovers quickly, but a daily-budget error won't, so fail fast instead of
+  // hammering the API with a tight retry loop.
   for (let pass = 0; pass < 2; pass++) {
-    let hadRateLimit = false;
-    let longestReset = 0;
-    for (let modelIndex = 0; modelIndex < chain.length; modelIndex++) {
-      const model = chain[modelIndex];
+    let transient429 = false;
+    for (const model of chain) {
       const tokens = Math.min(maxTokens, MODEL_TOKEN_CAPS[model] ?? maxTokens);
       let res;
       try {
@@ -117,18 +143,12 @@ export async function callGroq(
           }
           // Return only a *valid, complete* JSON block so downstream parsing
           // never sees markdown fences, preamble, or broken output.
-          const json = content.match(/\{[\s\S]*\}/)?.[0];
-          if (json) {
-            try {
-              JSON.parse(json);
-              return json;
-            } catch {
-              lastError = "Invalid JSON in AI response";
-              continue;
-            }
+          try {
+            return sanitizeJson(content);
+          } catch (err) {
+            lastError = err instanceof Error ? err.message : "Invalid JSON in AI response";
+            continue;
           }
-          lastError = "Response contains no JSON";
-          continue;
         } catch {
           lastError = "Invalid response from AI";
           continue;
@@ -136,61 +156,46 @@ export async function callGroq(
       }
 
       lastError = text.slice(0, 200);
+      lastStatus = res.status || 500;
       if (res.status === 429) {
-        // A daily token budget is gone for hours; waiting won't help, so
-        // skip straight to the next model (or fail fast) instead of stalling.
-        if (/tokens per day \(TPD\)|limit.*per day/i.test(text)) {
+        sawRateLimit = true;
+        // A daily token budget is gone for hours; waiting won't help, so skip
+        // straight to the next model (or fail fast) instead of stalling.
+        if (/tokens per day \(TPD\)|limit.*per day|request too large/i.test(text)) {
           continue;
         }
-        hadRateLimit = true;
-        const resetHeader = res.headers.get("x-ratelimit-reset-tokens");
-        const resetSec = resetHeader ? parseFloat(resetHeader) : NaN;
-        if (Number.isFinite(resetSec) && resetSec > 0) {
-          longestReset = Math.max(longestReset, resetSec);
-        }
-        // "Request too large" means this model can't handle the token count -
-        // skip it entirely (retrying won't help).
-        if (/request too large/i.test(text)) {
-          continue;
-        }
+        transient429 = true;
         // Otherwise: move on to another model (each has its own token budget).
       }
-      // Non-429 error (500 etc.) or exhausted retries: try another model.
+      // Non-429 error (500 etc.): try another model.
     }
 
-    if (hadRateLimit) {
-      // A short pause helps a transient per-minute limit recover; keep it
-      // bounded so a burnt-out daily budget fails fast and lets callers
-      // fall back to compact generation instead of hanging.
-      const waitSec = Math.min(Math.max(longestReset, 3), 6);
-      await new Promise((r) => setTimeout(r, waitSec * 1000));
-      continue;
-    }
-    break;
+    if (!transient429) break;
+    // Short exponential backoff before one more pass (1s then 2s), bounded so
+    // a burnt-out daily budget fails fast instead of hanging.
+    await sleep(1000 * Math.pow(2, pass));
   }
 
-  throw new Error("AI is busy right now. Please wait a moment and try again.");
-}
-
-function extractJson(text: string): string {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("Invalid JSON response from AI");
-  return match[0];
+  if (sawRateLimit) {
+    throw new AIProviderError("AI is rate limited. Please wait a moment and try again.", 429);
+  }
+  throw new AIProviderError(`AI error: ${lastError}`, lastStatus);
 }
 
 export async function callGemini(prompt: string, maxTokens: number): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your_gemini_api_key_here") {
-    throw new Error("GEMINI_API_KEY is not configured");
+    throw new AIProviderError("GEMINI_API_KEY is not configured", 500);
   }
   const models = (process.env.GEMINI_MODELS || "gemini-3.6-flash,gemini-3.1-pro-preview")
     .split(",")
     .map((m) => m.trim());
   let lastError = "Unknown Gemini error";
+  let sawRateLimit = false;
   for (const model of models) {
-    let attempts = 0;
-    while (attempts < 3) {
-      attempts++;
+    // Max 2 attempts per model with exponential backoff on transient 429s.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await sleep(1000 * Math.pow(2, attempt - 1));
       try {
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
@@ -208,13 +213,8 @@ export async function callGemini(prompt: string, maxTokens: number): Promise<str
         const data = await res.json();
 
         if (res.status === 429) {
+          sawRateLimit = true;
           const errText = data?.error?.message || "";
-          const retryIn = errText.match(/retry in ([\d.]+)s/i);
-          if (retryIn) {
-            lastError = errText.slice(0, 200);
-            await new Promise((r) => setTimeout(r, Math.min(parseFloat(retryIn[1]), 45) * 1000));
-            continue;
-          }
           lastError = errText.slice(0, 200) || "Gemini rate limited";
           continue;
         }
@@ -232,51 +232,78 @@ export async function callGemini(prompt: string, maxTokens: number): Promise<str
         }
 
         // Return only a valid, complete JSON block, same contract as callGroq.
-        const json = content.match(/\{[\s\S]*\}/)?.[0];
-        if (json) {
-          try {
-            JSON.parse(json);
-            return json;
-          } catch {
-            lastError = "Invalid JSON in AI response";
-            continue;
-          }
+        try {
+          return sanitizeJson(content);
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : "Invalid JSON in AI response";
+          continue;
         }
-        lastError = "Response contains no JSON";
       } catch (err: unknown) {
         lastError = err instanceof Error ? err.message : String(err);
         break;
       }
     }
   }
-  throw new Error(`Gemini error: ${lastError}`);
+  if (sawRateLimit) {
+    throw new AIProviderError("AI is rate limited. Please wait a moment and try again.", 429);
+  }
+  throw new AIProviderError(`Gemini error: ${lastError}`, 500);
 }
 
-// Groq's multi-model chain is fast and reliable; pick the model - if one
-// model's daily budget is exhausted we fail fast and the caller's compact
-// fallback kicks in immediately instead of stalling.
+// Provider fallback chain: Groq is the fast, reliable primary; if it rate
+// limits (429) we switch to Gemini; if Gemini also fails we go back to Groq
+// once more before giving up.
 async function callAI(prompt: string, maxTokens: number): Promise<string> {
-  return callGroq(getApiKey(), prompt, maxTokens);
+  const groqKey = process.env.GROQ_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const hasGroq = groqKey && groqKey !== "your_groq_api_key_here";
+  const hasGemini = geminiKey && geminiKey !== "your_gemini_api_key_here";
+
+  const attempts: Array<() => Promise<string>> = [];
+  if (hasGroq) attempts.push(() => callGroq(groqKey as string, prompt, maxTokens));
+  if (hasGemini) attempts.push(() => callGemini(prompt, maxTokens));
+  if (hasGroq && hasGemini) attempts.push(() => callGroq(groqKey as string, prompt, maxTokens));
+
+  if (attempts.length === 0) {
+    throw new AIProviderError("No AI provider is configured (set GROQ_API_KEY or GEMINI_API_KEY)", 500);
+  }
+
+  // At most 3 provider calls total (e.g. groq -> gemini -> groq), each with a
+  // short exponential backoff between attempts, never a tight retry loop.
+  let lastError: unknown = null;
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      return await attempts[i]();
+    } catch (err) {
+      lastError = err;
+      if (i < attempts.length - 1) await sleep(1000 * Math.pow(2, i));
+    }
+  }
+  if (lastError instanceof AIProviderError) throw lastError;
+  throw new AIProviderError("AI is rate limited. Please wait a moment and try again.", 429);
 }
 
 async function callAndParseJson<T>(
   prompt: string,
   maxTokens: number,
-  retries = 3
+  retries = 2
 ): Promise<T> {
   let lastError = "";
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const text = await callAI(prompt, maxTokens);
-      const json = text.match(/\{[\s\S]*\}/)?.[0];
-      if (!json) throw new Error("No JSON in AI response");
-      return JSON.parse(json) as T;
+      return JSON.parse(sanitizeJson(text)) as T;
     } catch (err: unknown) {
+      // Provider-level failures (rate limit, 5xx) are already final and clear;
+      // surface them directly instead of wrapping them as a JSON parse error.
+      if (err instanceof AIProviderError) {
+        throw new AIProviderError(err.message, err.status);
+      }
       lastError = err instanceof Error ? err.message : String(err);
-      continue;
+      if (attempt < retries - 1) await sleep(500 * Math.pow(2, attempt));
     }
   }
-  throw new Error(`AI returned invalid JSON: ${lastError}`);
+  throw new AIProviderError(`AI returned invalid JSON: ${lastError}`, 502);
 }
 
 async function callAndParseArray<T>(
@@ -290,14 +317,6 @@ async function callAndParseArray<T>(
   } catch {
     return [] as T;
   }
-}
-
-function getApiKey(): string {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey || apiKey === "your_groq_api_key_here") {
-    throw new Error("GROQ_API_KEY is not configured");
-  }
-  return apiKey;
 }
 
 function buildBaseContext(videoInfo: YouTubeVideoInfo): string {
@@ -384,7 +403,7 @@ ${baseContext}
 Return ONLY valid JSON (no markdown):
 {"summary":"one sentence","keyTopics":["t1","t2","t3"],"chapters":[{"title":"short title","timestamp":"0:00","keyConcepts":["a","b"],"notes":"one line of study notes"}],"revisionPoints":["r1","r2"],"difficulty":"Beginner|Intermediate|Advanced","estimatedStudyTime":"X hours","lastYearNotes":[{"topic":"topic","frequency":"asked frequently","notes":"key facts","exams":["SSC CGL"]}],"predictedTopics":[{"topic":"topic","probability":"High|Medium|Low","reason":"brief","preparationTip":"brief"}]}
 Keep everything short and concise. 4-6 chapters max.`;
-    const studyData = await callAndParseJson<Record<string, any>>(compactPrompt, 900, 3);
+    const studyData = await callAndParseJson<Record<string, any>>(compactPrompt, 900, 2);
     return normalizePlan(studyData);
   }
 }
