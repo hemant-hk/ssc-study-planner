@@ -49,6 +49,7 @@ interface StudyPlan {
   quiz: QuizQuestion[];
   lastYearNotes: ImportantNote[];
   predictedTopics: PredictedTopic[];
+  fullNotes?: string;
 }
 
 interface SubjectVideo {
@@ -75,7 +76,18 @@ const COLORS = [
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default function Home() {
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  // Hydrate synchronously from the localStorage cache so the sidebar subjects
+  // render instantly on first click; the /api/subjects fetch refines in
+  // background (this is critical when the cloud is slow/unreachable).
+  const [subjects, setSubjects] = useState<Subject[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = localStorage.getItem("yt-study-subjects");
+      return saved ? (JSON.parse(saved) as Subject[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [showNewSubject, setShowNewSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
@@ -89,6 +101,7 @@ export default function Home() {
   const [playlistProgress, setPlaylistProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  const [generatingNotes, setGeneratingNotes] = useState(false);
   // Guard against duplicate/rapid study-plan requests for the same video.
   const inFlightPlans = useRef<Set<string>>(new Set());
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
@@ -424,6 +437,39 @@ export default function Home() {
     }
   }
 
+  async function generateFullNotesForVideo(subjectId: string, videoId: string) {
+    if (inFlightPlans.current.has(videoId)) return;
+    inFlightPlans.current.add(videoId);
+    setGeneratingNotes(true);
+    setError("");
+    try {
+      const cachedPlan = await getCachedPlan(videoId);
+      if (cachedPlan?.fullNotes && cachedPlan.fullNotes.trim().length > 0) {
+        applyPlanToVideo(subjectId, videoId, cachedPlan);
+        return;
+      }
+      const res = await fetch("/api/study-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: `https://youtube.com/watch?v=${videoId}`,
+          style: "notes",
+          ...(cachedPlan ? { plan: cachedPlan } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate notes");
+      await setCachedPlan(videoId, data.studyPlan);
+      applyPlanToVideo(subjectId, videoId, data.studyPlan);
+    } catch (err: unknown) {
+      inFlightPlans.current.delete(videoId);
+      setError(err instanceof Error ? err.message : "Failed to generate notes");
+    } finally {
+      inFlightPlans.current.delete(videoId);
+      setGeneratingNotes(false);
+    }
+  }
+
   function removeVideo(subjectId: string, videoId: string) {
     setSubjects((prev) => {
       const updated = prev.map((s) => {
@@ -718,6 +764,32 @@ export default function Home() {
                         )}
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {sectionBtn("fullNotes", "Full Notes", <svg className="w-5 h-5 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>, activeVideo.studyPlan.fullNotes && activeVideo.studyPlan.fullNotes.trim().length > 0 ? 1 : undefined)}
+                {openSections.fullNotes && (
+                  <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+                    {activeVideo.studyPlan.fullNotes && activeVideo.studyPlan.fullNotes.trim().length > 0 ? (
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-0.5 rounded-full">Complete chapter notes</span>
+                          <NotesButton subject={activeSubject.name} topic={activeVideo.title} videoId={activeVideo.videoId} contentType="custom" content={activeVideo.studyPlan.fullNotes} title="Save full notes" />
+                        </div>
+                        <div className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-5 [&_h1]:mb-2 [&_strong]:text-zinc-900 dark:[&_strong]:text-zinc-50 [&_li]:ml-4 [&_ul]:list-disc [&_ol]:list-decimal">
+                          {activeVideo.studyPlan.fullNotes}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">Generate complete, detailed study notes covering everything in this topic.</p>
+                        <button onClick={() => generateFullNotesForVideo(activeSubject.id, activeVideo.videoId)} disabled={generatingNotes}
+                          className="inline-flex items-center gap-2 px-6 py-2.5 bg-cyan-600 text-white rounded-lg font-medium hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                          {generatingNotes && <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
+                          {generatingNotes ? "Generating full notes..." : "Generate Full Notes"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

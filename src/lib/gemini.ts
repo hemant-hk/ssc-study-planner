@@ -20,6 +20,7 @@ export interface StudyPlan {
   quiz: QuizQuestion[];
   lastYearNotes: ImportantNote[];
   predictedTopics: PredictedTopic[];
+  fullNotes?: string;
 }
 
 export interface ImportantNote {
@@ -182,7 +183,11 @@ export async function callGroq(
   throw new AIProviderError(`AI error: ${lastError}`, lastStatus);
 }
 
-export async function callGemini(prompt: string, maxTokens: number): Promise<string> {
+export async function callGemini(
+  prompt: string,
+  maxTokens: number,
+  requireJSON = true
+): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your_gemini_api_key_here") {
     throw new AIProviderError("GEMINI_API_KEY is not configured", 500);
@@ -233,6 +238,7 @@ export async function callGemini(prompt: string, maxTokens: number): Promise<str
 
         // Return only a valid, complete JSON block, same contract as callGroq.
         try {
+          if (!requireJSON) return content;
           return sanitizeJson(content);
         } catch (err) {
           lastError = err instanceof Error ? err.message : "Invalid JSON in AI response";
@@ -253,16 +259,22 @@ export async function callGemini(prompt: string, maxTokens: number): Promise<str
 // Provider fallback chain: Groq is the fast, reliable primary; if it rate
 // limits (429) we switch to Gemini; if Gemini also fails we go back to Groq
 // once more before giving up.
-async function callAI(prompt: string, maxTokens: number): Promise<string> {
+async function callAI(
+  prompt: string,
+  maxTokens: number,
+  requireJSON = true
+): Promise<string> {
   const groqKey = process.env.GROQ_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   const hasGroq = groqKey && groqKey !== "your_groq_api_key_here";
   const hasGemini = geminiKey && geminiKey !== "your_gemini_api_key_here";
 
   const attempts: Array<() => Promise<string>> = [];
-  if (hasGroq) attempts.push(() => callGroq(groqKey as string, prompt, maxTokens));
-  if (hasGemini) attempts.push(() => callGemini(prompt, maxTokens));
-  if (hasGroq && hasGemini) attempts.push(() => callGroq(groqKey as string, prompt, maxTokens));
+  if (hasGroq)
+    attempts.push(() => callGroq(groqKey as string, prompt, maxTokens, { requireJSON }));
+  if (hasGemini) attempts.push(() => callGemini(prompt, maxTokens, requireJSON));
+  if (hasGroq && hasGemini)
+    attempts.push(() => callGroq(groqKey as string, prompt, maxTokens, { requireJSON }));
 
   if (attempts.length === 0) {
     throw new AIProviderError("No AI provider is configured (set GROQ_API_KEY or GEMINI_API_KEY)", 500);
@@ -408,6 +420,32 @@ Keep everything short and concise. 4-6 chapters max.`;
   }
 }
 
+// Generate exhaustive, self-contained study notes that cover *everything* in
+// the video — used on demand (like the quiz) so the long output doesn't blow
+// the token budget of the compact study-plan transcript.
+export async function generateFullNotes(
+  videoInfo: YouTubeVideoInfo,
+  existingPlan?: StudyPlan | null
+): Promise<string> {
+  const baseContext = buildBaseContext(videoInfo);
+  const topicContext = existingPlan?.keyTopics?.length
+    ? `Key topics: ${existingPlan.keyTopics.join(", ")}`
+    : "";
+
+  const prompt = `You are an expert SSC exam mentor. Write a COMPLETE, DETAILED study note for this topic. It must cover EVERYTHING in the video — every concept, definition, rule, formula, date, name, example, and examination-relevant fact. Write in clear Markdown with headings and bullet points, structured for active reading and revision. This is the student's primary study material, so be thorough and specific — include real examples, common mistakes, and memory hooks.
+
+Video Title: ${videoInfo.title}
+Video Author: ${videoInfo.author}
+${topicContext}
+Video Description:
+${videoInfo.description.slice(0, 2000)}
+
+Respond with your note as PLAIN MARKDOWN TEXT. Do NOT wrap it in code fences or JSON. No preamble or "Here is your note" — start directly with the markdown.`;
+
+  const text = await callAI(prompt, 2600, false);
+  return text.trim();
+}
+
 function normalizePlan(data: Record<string, any>): StudyPlan {
   return {
     summary: data.summary || "",
@@ -416,9 +454,10 @@ function normalizePlan(data: Record<string, any>): StudyPlan {
     revisionPoints: data.revisionPoints || [],
     difficulty: data.difficulty || "Intermediate",
     estimatedStudyTime: data.estimatedStudyTime || "1 hour",
-    quiz: [],
+    quiz: data.quiz || [],
     lastYearNotes: data.lastYearNotes || [],
     predictedTopics: data.predictedTopics || [],
+    fullNotes: data.fullNotes || "",
   };
 }
 

@@ -6,7 +6,7 @@ import {
   fetchPlaylistInfo,
 } from "@/lib/youtube";
 import type { YouTubeVideoInfo } from "@/lib/youtube";
-import { generateStudyPlan, generateQuiz, AIProviderError, type StudyPlan } from "@/lib/gemini";
+import { generateStudyPlan, generateQuiz, generateFullNotes, AIProviderError, type StudyPlan } from "@/lib/gemini";
 
 // No server-side filesystem access here. Serverless runtimes (Vercel) mount
 // the filesystem read-only, so writing e.g. data/study-plans.json would throw
@@ -52,6 +52,16 @@ export async function POST(request: NextRequest) {
       cachedVideoInfo && typeof cachedVideoInfo === "object"
         ? (cachedVideoInfo as YouTubeVideoInfo)
         : await fetchVideoInfo(vid);
+
+    if (style === "notes") {
+      const existing = cachedPlan as StudyPlan | undefined;
+      if (existing?.fullNotes) {
+        return Response.json({ type: "video", videoInfo, studyPlan: existing, cached: true });
+      }
+      const base = existing || (await generateStudyPlan(videoInfo));
+      const merged: StudyPlan = { ...base, fullNotes: await generateFullNotes(videoInfo, base) };
+      return Response.json({ type: "video", videoInfo, studyPlan: merged });
+    }
 
     if (style === "quiz") {
       const existing = cachedPlan as StudyPlan | undefined;
