@@ -5,6 +5,7 @@ import DoubtDrawer from "@/components/DoubtDrawer";
 import DiscussionThread from "@/components/DiscussionThread";
 import NotesButton from "@/components/NotesButton";
 import { getCachedPlan, getCachedPlans, setCachedPlan, deleteCachedPlan } from "@/lib/study-cache";
+import { SSC_NOTICES } from "@/lib/ssc-notices";
 
 interface VideoInfo {
   videoId: string;
@@ -75,6 +76,21 @@ const COLORS = [
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+const DAILY_QUOTES = [
+  "The competition doesn't care about your excuses. Discipline is choosing between what you want now and what you want most.",
+  "One more revision. One more mock test. Every rep your rivals skip is a mark you keep.",
+  "You don't rise to your goals; you fall to your systems. Build them sharp.",
+  "SSC is a marathon of consistency, not a sprint of intensity. Show up every single day.",
+  "Two years of discipline buys you a lifetime of options. It's a fair trade.",
+  "While others procrastinate on their phones, you quietly out-work them. That's the edge.",
+  "The exam doesn't care about your talent. It only counts the answers you practised.",
+  "Motivation gets you started; habit keeps you unbeatable. Make revision a habit.",
+  "Every mock test is a trophy waiting for your mistakes to be found before the real day.",
+  "You can't outsource this. No one else's discipline pays your salary.",
+  "Exposure, repetition, recall. Do your three rounds today, without negotiation.",
+  "The seat in the merit list belongs to whoever refuses to be average at 2 AM.",
+];
+
 export default function Home() {
   // Hydrate synchronously from the localStorage cache so the sidebar subjects
   // render instantly on first click; the /api/subjects fetch refines in
@@ -92,8 +108,6 @@ export default function Home() {
   const [showNewSubject, setShowNewSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [url, setUrl] = useState("");
-  const [importUrl, setImportUrl] = useState("");
-  const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
@@ -181,15 +195,18 @@ export default function Home() {
     }
   }, [subjects, activeVideoId]);
 
-  // If subjects exist but none is selected, surface the first one so the
-  // "create your first subject" onboarding hub never replaces real lectures.
+  const [now, setNow] = useState(() => new Date());
+
   useEffect(() => {
-    if (subjects.length === 0 || activeSubjectId) return;
-    const vid = new URLSearchParams(window.location.search).get("vid");
-    if (vid) return; // let the link selection effect pick the right subject
-    setActiveSubjectId(subjects[0].id);
-    setActiveVideoId(null);
-  }, [subjects, activeSubjectId]);
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeString = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  const dateString = now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / 86_400_000);
+  const dailyQuote = DAILY_QUOTES[dayOfYear % DAILY_QUOTES.length];
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -285,109 +302,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify(newSubject),
       });
-    }
-  }
-
-  function createSubjectFromName(name: string) {
-    const clean = name.trim();
-    if (!clean) return;
-    const existing = subjects.find((s) => s.name.toLowerCase() === clean.toLowerCase());
-    if (existing) {
-      setActiveSubjectId(existing.id);
-      setActiveVideoId(null);
-      setShowSidebar(false);
-      return;
-    }
-    const newSubject: Subject = {
-      id: Date.now().toString(),
-      name: clean,
-      color: COLORS[subjects.length % COLORS.length],
-      videos: [],
-      schedule: DAYS.map((day) => ({ day, startTime: "", endTime: "" })),
-      createdAt: new Date().toISOString(),
-    };
-    setSubjects((prev) => [...prev, newSubject]);
-    setActiveSubjectId(newSubject.id);
-    setActiveVideoId(null);
-    setShowSidebar(false);
-    if (isAdmin) {
-      fetch("/api/subjects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
-        body: JSON.stringify(newSubject),
-      });
-    }
-  }
-
-  async function importPlaylistFromHome() {
-    if (!importUrl.trim() || importing) return;
-    setImporting(true);
-    setError("");
-    try {
-      const res = await fetch("/api/study-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: importUrl.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to process URL");
-
-      let name = "";
-      let videos: SubjectVideo[] = [];
-      if (data.type === "playlist") {
-        name = data.playlist.title;
-        videos = (data.playlist.videos || []).map((v: { videoId: string; title: string; thumbnailUrl: string }) => ({
-          videoId: v.videoId,
-          title: v.title,
-          thumbnailUrl: v.thumbnailUrl,
-          studyPlan: null,
-        }));
-      } else if (data.type === "video") {
-        name = data.videoInfo?.title;
-        videos = [
-          {
-            videoId: data.videoInfo.videoId,
-            title: data.videoInfo.title,
-            thumbnailUrl: data.videoInfo.thumbnailUrl,
-            studyPlan: null,
-          },
-        ];
-      }
-      if (!name) name = "Imported Subject";
-
-      const existing = subjects.find((s) => s.name.toLowerCase() === name.toLowerCase());
-      if (existing) {
-        setActiveSubjectId(existing.id);
-        setActiveVideoId(null);
-        setImportUrl("");
-        setError("");
-        return;
-      }
-
-      const newSubject: Subject = {
-        id: Date.now().toString(),
-        name,
-        color: COLORS[subjects.length % COLORS.length],
-        videos,
-        schedule: DAYS.map((day) => ({ day, startTime: "", endTime: "" })),
-        createdAt: new Date().toISOString(),
-      };
-      setSubjects((prev) => [...prev, newSubject]);
-      setActiveSubjectId(newSubject.id);
-      setActiveVideoId(null);
-      setImportUrl("");
-      setError("");
-      if (isAdmin) {
-        fetch("/api/subjects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
-          body: JSON.stringify(newSubject),
-        });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to import playlist");
-    } finally {
-      setImporting(false);
     }
   }
 
@@ -656,6 +570,12 @@ export default function Home() {
               <a href="/mock-test" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
                 Mock Tests
               </a>
+              <a href="/notice" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
+                Notices
+              </a>
+              <a href="/roster" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
+                Roster
+              </a>
               <span className="text-xs bg-white/5 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full whitespace-nowrap">
                 {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
               </span>
@@ -740,6 +660,14 @@ export default function Home() {
                   <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   Mock Tests
                 </a>
+                <a href="/roster" onClick={() => setShowSidebar(false)} className="flex items-center gap-2.5 p-2.5 rounded-lg text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
+                  <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  Roster
+                </a>
+                <a href="/notice" onClick={() => setShowSidebar(false)} className="flex items-center gap-2.5 p-2.5 rounded-lg text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
+                  <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                  Notices
+                </a>
               </div>
             </div>
         </aside>
@@ -748,94 +676,53 @@ export default function Home() {
 
         <main className="flex-1 overflow-y-auto">
           {!activeSubject ? (
-            <div className="min-h-full p-6 md:p-10 max-w-5xl mx-auto w-full">
+            <div className="min-h-full p-4 md:p-8 max-w-3xl mx-auto w-full">
               {error && <div className="mb-6 rounded-xl border border-red-900/40 bg-red-950/40 px-4 py-3 text-red-300 text-sm">{error}</div>}
 
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+              <div className="flex items-start justify-between gap-4 flex-wrap mb-8">
                 <div>
-                  <p className="text-xs font-semibold tracking-widest text-zinc-400 mb-1">SSC PREPARATION DASHBOARD</p>
-                  <h1 className="text-xl font-bold text-white">Build Your Smart Study Plan</h1>
+                  <p className="font-mono text-3xl md:text-4xl font-semibold tracking-tight text-white tabular-nums">{timeString}</p>
+                  <p className="text-sm text-zinc-400 tracking-wide mt-1.5">{dateString}</p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 border border-zinc-800 bg-zinc-950 px-3 py-1 rounded-full text-xs text-zinc-300">
-                  <span aria-hidden>⏳</span> SSC CGL 2025
+                <span className="bg-zinc-900 border border-zinc-800 text-xs px-2.5 py-1 rounded-full text-zinc-300 whitespace-nowrap">
+                  Target: SSC Examination
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
-                <div className="border border-dashed border-zinc-700 bg-zinc-950/60 p-5 rounded-2xl hover:border-zinc-500 transition">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-10 h-10 rounded-lg bg-zinc-900 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-zinc-200" viewBox="0 0 24 24" fill="currentColor"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" /></svg>
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-semibold text-white">Import Playlist</h3>
-                      <p className="text-xs text-zinc-400">Auto-generate chapters and notes from any YouTube playlist.</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={importUrl}
-                      onChange={(e) => setImportUrl(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && importPlaylistFromHome()}
-                      placeholder="Paste YouTube playlist / video URL…"
-                      className="flex-1 min-w-0 text-sm rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-500"
-                    />
-                    <button
-                      onClick={importPlaylistFromHome}
-                      disabled={importing || !importUrl.trim()}
-                      className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold hover:bg-zinc-200 disabled:opacity-50 transition"
-                    >
-                      {importing ? "Importing…" : "Import"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border border-dashed border-zinc-700 bg-zinc-950/60 p-5 rounded-2xl hover:border-zinc-500 transition">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="w-10 h-10 rounded-lg bg-zinc-900 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-zinc-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-semibold text-white">Manual Subject</h3>
-                      <p className="text-xs text-zinc-400">Add custom topics, video links, and notes manually.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { setShowNewSubject(true); setShowSidebar(true); }}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition ml-[52px]"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                    Create Subject
-                  </button>
-                </div>
+              <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-6 relative overflow-hidden mb-8">
+                <p className="text-[11px] font-semibold text-zinc-400 tracking-widest uppercase mb-2">Daily Focus</p>
+                <blockquote className="text-base md:text-lg font-medium text-zinc-200 italic leading-relaxed">“{dailyQuote}”</blockquote>
+                <p className="text-xs text-zinc-400 mt-3">— SSC Mindset</p>
               </div>
 
-              <div>
-                <h2 className="text-xs uppercase text-zinc-400 tracking-wider mb-3">Or Start with Popular Modules</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {[
-                    { name: "FRB 2.0 History (Parmar SSC)", count: "23 Lectures" },
-                    { name: "Complete Geography", count: "17 Lectures" },
-                  ].map((preset) => (
-                    <div key={preset.name} className="flex items-center gap-3 p-4 rounded-2xl border border-zinc-800 bg-[#0f0f11]">
-                      <span className="w-9 h-9 rounded-lg bg-zinc-900 flex items-center justify-center text-sm text-zinc-300">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0 0a9 9 0 01-9-9" /></svg>
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white truncate">{preset.name}</p>
-                        <span className="text-xs text-zinc-400">{preset.count}</span>
-                      </div>
-                      <button
-                        onClick={() => createSubjectFromName(preset.name)}
-                        className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white transition"
-                      >
-                        + Add to My List
-                      </button>
+              <section>
+                <div className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div>
+                      <p className="text-[11px] font-semibold text-zinc-400 tracking-widest uppercase mb-1">Official Notices</p>
+                      <h3 className="text-base font-semibold text-white">SSC Exam Calendar & Application Dates</h3>
                     </div>
-                  ))}
+                    <a href="/notice" className="inline-block border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs px-3 py-1.5 rounded-lg transition-colors">
+                      View Notices →
+                    </a>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {SSC_NOTICES.map((n) => {
+                      const keyDate = n.dates.find((d) => d.important)?.value || n.dates[0]?.value || "";
+                      const live = n.status === "Active Now";
+                      return (
+                        <span key={n.exam} className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full border ${live ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-900 text-zinc-300"}`}>
+                          <span className="relative flex h-1.5 w-1.5" aria-hidden>
+                            {live && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />}
+                            <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${live ? "bg-emerald-500" : "bg-zinc-500"}`} />
+                          </span>
+                          {n.exam} · {keyDate}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              </section>
             </div>
           ) : !activeVideoId ? (
             <div className="p-6 space-y-6">
