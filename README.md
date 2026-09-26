@@ -1,4 +1,8 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Study Planner
+
+Video → study-plan web app with AI-generated summaries, quizzes, chapter notes,
+PYQ bank, mock tests, and **cross-device cloud sync** of subjects and study plans
+via Supabase.
 
 ## Getting Started
 
@@ -16,9 +20,30 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Cloud sync (Supabase) setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The app saves subjects and study plans to Supabase so they survive refreshes
+and sync across devices. It needs two things configured **once**:
+
+1. **Create the table (one-time, in Supabase).**
+   - Supabase Dashboard → your project → **SQL Editor**.
+   - Open `supabase/schema.sql` from this repo, paste it, and click **Run**.
+   - This creates the `study_cache` table and the RLS policies. Rows store both
+     study plans (keyed by videoId) and subjects (keyed by `subject:<id>`), plus
+     a one-time seed marker.
+
+2. **Set the environment variables** (copy `.env.local.example` →
+   `.env.local` for local dev, and set the same values in **Vercel → Settings →
+   Environment Variables**):
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` — optional but recommended (bypasses RLS; never
+     expose this one to the browser).
+
+> If the cloud is unreachable (offline, misconfigured, table missing), the app
+> automatically falls back to the browser's localStorage so you never lose work.
+> A **"Cloud: On / Cloud: Off"** badge in the header shows whether data is being
+> saved to the cloud and syncing across devices or only kept on this one.
 
 ## Learn More
 
@@ -31,6 +56,6 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploy this app on Vercel so it runs somewhere with a stable network that can
+reach Supabase, and set the Supabase env vars listed above in the project
+settings.

@@ -119,8 +119,16 @@ export default function Home() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changePasswordError, setChangePasswordError] = useState("");
   const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
+  // "unknown" | "on" | "off" — on = cloud reachable & saving, off = local-only.
+  const [cloudStatus, setCloudStatus] = useState<"unknown" | "on" | "off">("unknown");
 
   useEffect(() => {
+    // Probe cloud reachability once so the UI can show whether data saves
+    // across devices or only on this one.
+    fetch("/api/cache")
+      .then((res) => setCloudStatus(res.ok ? "on" : "off"))
+      .catch(() => setCloudStatus("off"));
+
     fetch("/api/subjects")
       .then((res) => res.json())
       .then(async (data) => {
@@ -540,6 +548,11 @@ export default function Home() {
             <span className="text-sm text-zinc-500 dark:text-zinc-400">
               {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
             </span>
+            {cloudStatus === "on" ? (
+              <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full whitespace-nowrap" title="Data saves to the cloud and syncs across devices">Cloud: On</span>
+            ) : cloudStatus === "off" ? (
+              <span className="text-xs bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-1 rounded-full whitespace-nowrap" title="Cloud not reachable — data is saved only on this device">Cloud: Off</span>
+            ) : null}
             {isAdmin ? (
               <div className="flex items-center gap-2">
                 <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full">Admin</span>

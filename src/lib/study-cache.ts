@@ -89,10 +89,9 @@ export async function getCachedPlans(): Promise<Record<string, StudyPlan>> {
       const body = (await res.json()) as { plans?: Record<string, StudyPlan> };
       return body.plans || {};
     }
-    // Server-side Supabase not configured (503): nothing to sync from, and the
-    // request reached the server so the network is fine — still serve local.
-    if (res.status === 503) return lsReadAll();
-    return {};
+    // Server couldn't serve from the cloud (503 not configured, 500 table
+    // missing/RLS, etc.): fall back to the browser's copy so plans survive.
+    return lsReadAll();
   } catch (err) {
     // Truly offline: fall back to the browser's copy.
     if (isNetworkError(err)) return lsReadAll();
@@ -107,8 +106,8 @@ export async function getCachedPlan(videoId: string): Promise<StudyPlan | null> 
       const body = (await res.json()) as { plan?: StudyPlan | null };
       return body.plan || null;
     }
-    if (res.status === 503) return lsRead(videoId);
-    return null;
+    // Cloud unavailable for any reason -> fall back to the local copy.
+    return lsRead(videoId);
   } catch (err) {
     if (isNetworkError(err)) return lsRead(videoId);
     return null;
@@ -117,8 +116,10 @@ export async function getCachedPlan(videoId: string): Promise<StudyPlan | null> 
 
 export async function setCachedPlan(videoId: string, plan: StudyPlan): Promise<void> {
   // Supabase (via /api/cache) is the source of truth for cross-device sync.
-  // localStorage gets a copy only when the write couldn't reach the server
-  // (offline / server Supabase not configured) so it persists as a fallback.
+  // ALWAYS keep a local copy as a fallback: if the cloud write fails for any
+  // reason (offline, Supabase not configured, table missing, RLS), the plan
+  // still survives on this device instead of being lost forever.
+  lsWrite(videoId, plan);
   try {
     const res = await fetch("/api/cache", {
       method: "POST",
@@ -126,10 +127,8 @@ export async function setCachedPlan(videoId: string, plan: StudyPlan): Promise<v
       body: JSON.stringify({ key: videoId, data: plan }),
     });
     if (res.ok) return;
-    if (res.status === 503) lsWrite(videoId, plan);
-  } catch (err) {
-    // Truly offline: keep the plan locally so it isn't lost.
-    if (isNetworkError(err)) lsWrite(videoId, plan);
+  } catch {
+    // Stay offline-friendly: the local copy above is already in place.
   }
 }
 
