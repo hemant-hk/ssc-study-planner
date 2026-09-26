@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { StudyPlan } from "@/lib/gemini";
+import { getServerSupabase } from "@/lib/server-supabase";
 
 // Server-side proxy for the `study_cache` table. The browser no longer talks to
 // Supabase directly (which depended on anon-key + RLS config that can block
@@ -13,21 +13,8 @@ import type { StudyPlan } from "@/lib/gemini";
 //   DELETE /api/cache        -> body { key }        -> delete row
 const TABLE = "study_cache";
 
-let serverClient: SupabaseClient | null = null;
-
-function getServerClient(): SupabaseClient | null {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key || url.startsWith("your_") || key.startsWith("your_")) return null;
-  if (!serverClient) {
-    serverClient = createClient(url, key, { auth: { persistSession: false } });
-  }
-  return serverClient;
-}
-
 export async function GET(request: NextRequest) {
-  const db = getServerClient();
+  const db = getServerSupabase();
   if (!db) {
     return Response.json({ error: "SUPABASE_NOT_CONFIGURED" }, { status: 503 });
   }
@@ -46,6 +33,8 @@ export async function GET(request: NextRequest) {
     if (error) return Response.json({ error: error.message }, { status: 500 });
     const plans: Record<string, StudyPlan> = {};
     for (const row of data || []) {
+      // Skip subject rows (key = "subject:<id>") — those belong to /api/subjects.
+      if (typeof row.key !== "string" || row.key.startsWith("subject:")) continue;
       if (row.key) plans[row.key as string] = row.data as StudyPlan;
     }
     return Response.json({ plans });
@@ -56,7 +45,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const db = getServerClient();
+  const db = getServerSupabase();
   if (!db) {
     return Response.json({ error: "SUPABASE_NOT_CONFIGURED" }, { status: 503 });
   }
@@ -78,7 +67,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const db = getServerClient();
+  const db = getServerSupabase();
   if (!db) {
     return Response.json({ error: "SUPABASE_NOT_CONFIGURED" }, { status: 503 });
   }
