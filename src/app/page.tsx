@@ -534,10 +534,10 @@ export default function Home() {
             <a href="/pyqs" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
               PYQ Bank
             </a>
-            <a href="/notes" className="hidden sm:inline-block text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
+            <a href="/notes" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
               My Notes
             </a>
-            <a href="/mock-test" className="hidden sm:inline-block text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
+            <a href="/mock-test" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
               Mock Tests
             </a>
             <span className="text-xs bg-white/5 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full whitespace-nowrap">
@@ -1004,7 +1004,7 @@ export default function Home() {
               />
               {loginError && <p className="text-xs text-red-500 mb-3">{loginError}</p>}
               <div className="flex gap-3">
-                <button type="submit" className="flex-1 bg-red-600 text-white py-2.5 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                <button type="submit" className="flex-1 bg-white text-black py-2.5 rounded-lg font-medium hover:bg-zinc-200 transition-colors">
                   Login
                 </button>
                 <button type="button" onClick={() => { setShowLogin(false); setLoginPassword(""); setLoginError(""); }} className="flex-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 py-2.5 rounded-lg font-medium hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors">
@@ -1046,7 +1046,7 @@ export default function Home() {
               {changePasswordError && <p className="text-xs text-red-500 mb-3">{changePasswordError}</p>}
               {changePasswordSuccess && <p className="text-xs text-green-500 mb-3">{changePasswordSuccess}</p>}
               <div className="flex gap-3">
-                <button type="submit" className="flex-1 bg-red-600 text-white py-2.5 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                <button type="submit" className="flex-1 bg-white text-black py-2.5 rounded-lg font-medium hover:bg-zinc-200 transition-colors">
                   Update
                 </button>
                 <button type="button" onClick={() => { setShowChangePassword(false); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setChangePasswordError(""); setChangePasswordSuccess(""); }} className="flex-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 py-2.5 rounded-lg font-medium hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors">
