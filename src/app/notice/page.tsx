@@ -46,18 +46,14 @@ export default function NoticePage() {
                     <span className="text-sm font-bold text-white tracking-tight">{notice.exam}</span>
                     {isActive ? (
                       notice.applyLink ? (
-                        <a href={notice.applyLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[11px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-2.5 py-1 rounded-full hover:bg-emerald-500/20 transition-colors">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                          </span>
-                          Apply Now · {chslDays >= 0 && chslDays <= 30 ? `${chslDays} days left` : "Active"}
+                        <a href={notice.applyLink} target="_blank" rel="noopener noreferrer" className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-800 text-emerald-400 font-medium hover:bg-emerald-900/60 transition-colors">
+                          Application Open{chslDays >= 0 && chslDays <= 30 ? ` · ${chslDays} days left` : ""}
                         </a>
                       ) : (
-                        <span className="text-[11px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-2.5 py-1 rounded-full">Active Now</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-800 text-emerald-400 font-medium">Active Now</span>
                       )
                     ) : (
-                      <span className="text-[11px] bg-zinc-900 border border-zinc-800 text-zinc-300 px-2.5 py-1 rounded-full">Upcoming</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-medium">Upcoming</span>
                     )}
                   </div>
 
