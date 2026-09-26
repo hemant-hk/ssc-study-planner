@@ -119,15 +119,21 @@ export default function Home() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changePasswordError, setChangePasswordError] = useState("");
   const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
-  // "unknown" | "on" | "off" — on = cloud reachable & saving, off = local-only.
-  const [cloudStatus, setCloudStatus] = useState<"unknown" | "on" | "off">("unknown");
+  // "checking" | "cloud" | "file" | "off" — which storage syncs your data across
+  // devices. cloud = Supabase reachable, file = this server's own store,
+  // off = only this browser (neither cloud nor server store available).
+  const [syncStatus, setSyncStatus] = useState<"checking" | "cloud" | "file" | "off">("checking");
 
   useEffect(() => {
-    // Probe cloud reachability once so the UI can show whether data saves
-    // across devices or only on this one.
-    fetch("/api/cache")
-      .then((res) => setCloudStatus(res.ok ? "on" : "off"))
-      .catch(() => setCloudStatus("off"));
+    // Probe which store answers, so the UI can show whether data syncs across
+    // devices and what backs it (Supabase cloud vs this server's file).
+    fetch("/api/cache?probe=1")
+      .then((res) => (res.ok ? res.json() : { store: "off" }))
+      .then((body: { store?: string }) => {
+        const store = body?.store;
+        setSyncStatus(store === "cloud" ? "cloud" : store === "file" ? "file" : "off");
+      })
+      .catch(() => setSyncStatus("off"));
 
     fetch("/api/subjects")
       .then((res) => res.json())
@@ -548,10 +554,12 @@ export default function Home() {
             <span className="text-sm text-zinc-500 dark:text-zinc-400">
               {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
             </span>
-            {cloudStatus === "on" ? (
-              <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full whitespace-nowrap" title="Data saves to the cloud and syncs across devices">Cloud: On</span>
-            ) : cloudStatus === "off" ? (
-              <span className="text-xs bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-1 rounded-full whitespace-nowrap" title="Cloud not reachable — data is saved only on this device">Cloud: Off</span>
+            {syncStatus === "cloud" ? (
+              <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full whitespace-nowrap" title="Data saves to the Supabase cloud and syncs across every device">Cloud: On</span>
+            ) : syncStatus === "file" ? (
+              <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full whitespace-nowrap" title="Supabase cloud unreachable — data is saved on this server and syncs across devices using it, plus a copy on this browser">Server sync</span>
+            ) : syncStatus === "off" ? (
+              <span className="text-xs bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-1 rounded-full whitespace-nowrap" title="No cloud and no server store — data is saved only in this browser">Sync: Off</span>
             ) : null}
             {isAdmin ? (
               <div className="flex items-center gap-2">
