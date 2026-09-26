@@ -464,7 +464,7 @@ ${videoInfo.description.slice(0, 2000)}
 
 Respond with your note as PLAIN MARKDOWN TEXT. Do NOT wrap it in code fences or JSON. No preamble or "Here is your note" — start directly with the markdown.`;
 
-  const text = await callAI(prompt, 2600, false);
+  const text = await callAI(prompt, 6000, false);
   return text.trim();
 }
 
