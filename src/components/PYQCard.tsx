@@ -141,7 +141,7 @@ export default function PYQCard({ pyq }: { pyq: PYQ }) {
               disabled={selected !== null}
               className={`w-full text-left p-3 rounded-lg border text-sm transition-colors ${optClass} ${selected === null ? "cursor-pointer" : "cursor-default"}`}
             >
-              <span className="font-medium text-zinc-500 mr-2">{String.fromCharCode(65 + i)}.</span>
+              <span className="font-medium text-zinc-400 mr-2">{String.fromCharCode(65 + i)}.</span>
               {opt}
               {selected !== null && i === pyq.answerIndex && <span className="ml-2 text-green-600">✓</span>}
               {selected !== null && isSelected && i !== pyq.answerIndex && <span className="ml-2 text-red-600">✗</span>}

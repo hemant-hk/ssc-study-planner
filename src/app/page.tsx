@@ -92,6 +92,8 @@ export default function Home() {
   const [showNewSubject, setShowNewSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [url, setUrl] = useState("");
+  const [importUrl, setImportUrl] = useState("");
+  const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
@@ -178,6 +180,16 @@ export default function Home() {
       }
     }
   }, [subjects, activeVideoId]);
+
+  // If subjects exist but none is selected, surface the first one so the
+  // "create your first subject" onboarding hub never replaces real lectures.
+  useEffect(() => {
+    if (subjects.length === 0 || activeSubjectId) return;
+    const vid = new URLSearchParams(window.location.search).get("vid");
+    if (vid) return; // let the link selection effect pick the right subject
+    setActiveSubjectId(subjects[0].id);
+    setActiveVideoId(null);
+  }, [subjects, activeSubjectId]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -273,6 +285,109 @@ export default function Home() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify(newSubject),
       });
+    }
+  }
+
+  function createSubjectFromName(name: string) {
+    const clean = name.trim();
+    if (!clean) return;
+    const existing = subjects.find((s) => s.name.toLowerCase() === clean.toLowerCase());
+    if (existing) {
+      setActiveSubjectId(existing.id);
+      setActiveVideoId(null);
+      setShowSidebar(false);
+      return;
+    }
+    const newSubject: Subject = {
+      id: Date.now().toString(),
+      name: clean,
+      color: COLORS[subjects.length % COLORS.length],
+      videos: [],
+      schedule: DAYS.map((day) => ({ day, startTime: "", endTime: "" })),
+      createdAt: new Date().toISOString(),
+    };
+    setSubjects((prev) => [...prev, newSubject]);
+    setActiveSubjectId(newSubject.id);
+    setActiveVideoId(null);
+    setShowSidebar(false);
+    if (isAdmin) {
+      fetch("/api/subjects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
+        body: JSON.stringify(newSubject),
+      });
+    }
+  }
+
+  async function importPlaylistFromHome() {
+    if (!importUrl.trim() || importing) return;
+    setImporting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/study-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: importUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to process URL");
+
+      let name = "";
+      let videos: SubjectVideo[] = [];
+      if (data.type === "playlist") {
+        name = data.playlist.title;
+        videos = (data.playlist.videos || []).map((v: { videoId: string; title: string; thumbnailUrl: string }) => ({
+          videoId: v.videoId,
+          title: v.title,
+          thumbnailUrl: v.thumbnailUrl,
+          studyPlan: null,
+        }));
+      } else if (data.type === "video") {
+        name = data.videoInfo?.title;
+        videos = [
+          {
+            videoId: data.videoInfo.videoId,
+            title: data.videoInfo.title,
+            thumbnailUrl: data.videoInfo.thumbnailUrl,
+            studyPlan: null,
+          },
+        ];
+      }
+      if (!name) name = "Imported Subject";
+
+      const existing = subjects.find((s) => s.name.toLowerCase() === name.toLowerCase());
+      if (existing) {
+        setActiveSubjectId(existing.id);
+        setActiveVideoId(null);
+        setImportUrl("");
+        setError("");
+        return;
+      }
+
+      const newSubject: Subject = {
+        id: Date.now().toString(),
+        name,
+        color: COLORS[subjects.length % COLORS.length],
+        videos,
+        schedule: DAYS.map((day) => ({ day, startTime: "", endTime: "" })),
+        createdAt: new Date().toISOString(),
+      };
+      setSubjects((prev) => [...prev, newSubject]);
+      setActiveSubjectId(newSubject.id);
+      setActiveVideoId(null);
+      setImportUrl("");
+      setError("");
+      if (isAdmin) {
+        fetch("/api/subjects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
+          body: JSON.stringify(newSubject),
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import playlist");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -524,25 +639,27 @@ export default function Home() {
                   ? "bg-white/5 border-white/10 text-zinc-300"
                   : syncStatus === "file"
                   ? "bg-white/5 border-white/10 text-zinc-400"
-                  : "bg-white/5 border-white/10 text-zinc-500"
+                  : "bg-white/5 border-white/10 text-zinc-400"
               }`} title={syncStatus === "cloud" ? "Data saves to the Supabase cloud and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
                 {syncStatus === "cloud" ? "Cloud sync" : syncStatus === "file" ? "Server sync" : "Local only"}
               </span>
             )}
           </div>
           <div className="flex items-center gap-3">
-            <a href="/pyqs" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-              PYQ Bank
-            </a>
-            <a href="/notes" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-              My Notes
-            </a>
-            <a href="/mock-test" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-              Mock Tests
-            </a>
-            <span className="text-xs bg-white/5 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full whitespace-nowrap">
-              {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
-            </span>
+            <div className="hidden md:flex items-center gap-3">
+              <a href="/pyqs" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
+                PYQ Bank
+              </a>
+              <a href="/notes" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
+                My Notes
+              </a>
+              <a href="/mock-test" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
+                Mock Tests
+              </a>
+              <span className="text-xs bg-white/5 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full whitespace-nowrap">
+                {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
+              </span>
+            </div>
             {isAdmin ? (
               <div className="relative flex items-center gap-2">
                 <span className="w-8 h-8 rounded-full bg-white/10 text-white text-xs font-medium flex items-center justify-center border border-white/10" title="Admin">
@@ -569,7 +686,7 @@ export default function Home() {
             <aside className="fixed lg:static inset-y-0 left-0 z-50 w-64 border-r border-white/10 bg-black overflow-y-auto flex-shrink-0">
               <div className="p-4">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider">Subjects</h2>
+                  <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Subjects</h2>
                   <div className="flex gap-2">
                     {isAdmin && (
                       <button onClick={() => setShowNewSubject(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white text-black hover:bg-zinc-200 transition-colors">
@@ -598,7 +715,7 @@ export default function Home() {
                   <div className={`w-3 h-3 rounded-full ${subject.color} flex-shrink-0`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-zinc-100 truncate">{subject.name}</p>
-                    <p className="text-[10px] text-zinc-500">{subject.videos.length} videos</p>
+                    <p className="text-[10px] text-zinc-400">{subject.videos.length} videos</p>
                   </div>
                   {isAdmin && (
                     <button onClick={(e) => { e.stopPropagation(); deleteSubject(subject.id); }} className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-zinc-400 transition-opacity">
@@ -608,27 +725,117 @@ export default function Home() {
                 </div>
               ))}
             </div>
+            <div className="px-4 pb-6 pt-4 border-t border-white/10">
+              <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">Library</h3>
+              <div className="space-y-1">
+                <a href="/pyqs" onClick={() => setShowSidebar(false)} className="flex items-center gap-2.5 p-2.5 rounded-lg text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
+                  <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                  PYQ Bank
+                </a>
+                <a href="/notes" onClick={() => setShowSidebar(false)} className="flex items-center gap-2.5 p-2.5 rounded-lg text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
+                  <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  My Notes
+                </a>
+                <a href="/mock-test" onClick={() => setShowSidebar(false)} className="flex items-center gap-2.5 p-2.5 rounded-lg text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
+                  <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  Mock Tests
+                </a>
+              </div>
+            </div>
         </aside>
         </>
         )}
 
         <main className="flex-1 overflow-y-auto">
           {!activeSubject ? (
-            <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <div className="relative mb-6">
-                <div className="absolute inset-0 bg-gradient-to-b from-zinc-200/20 to-transparent blur-2xl rounded-full" />
-                <svg className="w-16 h-16 text-zinc-300 relative" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+            <div className="min-h-full p-6 md:p-10 max-w-5xl mx-auto w-full">
+              {error && <div className="mb-6 rounded-xl border border-red-900/40 bg-red-950/40 px-4 py-3 text-red-300 text-sm">{error}</div>}
+
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+                <div>
+                  <p className="text-xs font-semibold tracking-widest text-zinc-400 mb-1">SSC PREPARATION DASHBOARD</p>
+                  <h1 className="text-xl font-bold text-white">Build Your Smart Study Plan</h1>
+                </div>
+                <span className="inline-flex items-center gap-1.5 border border-zinc-800 bg-zinc-950 px-3 py-1 rounded-full text-xs text-zinc-300">
+                  <span aria-hidden>⏳</span> SSC CGL 2025
+                </span>
               </div>
-              <h2 className="text-xl font-semibold text-zinc-50 mb-2">Create your first subject</h2>
-              <p className="text-zinc-500 max-w-sm mb-6">Organize your preparation by subject, add YouTube lectures, and generate AI-powered study plans.</p>
-              {isAdmin ? (
-                <button onClick={() => setShowSidebar(true)} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-black rounded-lg font-medium hover:bg-zinc-200 transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                  Create Subject
-                </button>
-              ) : (
-                <p className="text-sm text-zinc-500">Ask the admin to log in and add subjects.</p>
-              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
+                <div className="border border-dashed border-zinc-700 bg-zinc-950/60 p-5 rounded-2xl hover:border-zinc-500 transition">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="w-10 h-10 rounded-lg bg-zinc-900 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-zinc-200" viewBox="0 0 24 24" fill="currentColor"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" /></svg>
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Import Playlist</h3>
+                      <p className="text-xs text-zinc-400">Auto-generate chapters and notes from any YouTube playlist.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={importUrl}
+                      onChange={(e) => setImportUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && importPlaylistFromHome()}
+                      placeholder="Paste YouTube playlist / video URL…"
+                      className="flex-1 min-w-0 text-sm rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-500"
+                    />
+                    <button
+                      onClick={importPlaylistFromHome}
+                      disabled={importing || !importUrl.trim()}
+                      className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold hover:bg-zinc-200 disabled:opacity-50 transition"
+                    >
+                      {importing ? "Importing…" : "Import"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-dashed border-zinc-700 bg-zinc-950/60 p-5 rounded-2xl hover:border-zinc-500 transition">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="w-10 h-10 rounded-lg bg-zinc-900 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-zinc-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Manual Subject</h3>
+                      <p className="text-xs text-zinc-400">Add custom topics, video links, and notes manually.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setShowNewSubject(true); setShowSidebar(true); }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition ml-[52px]"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    Create Subject
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-xs uppercase text-zinc-400 tracking-wider mb-3">Or Start with Popular Modules</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {[
+                    { name: "FRB 2.0 History (Parmar SSC)", count: "23 Lectures" },
+                    { name: "Complete Geography", count: "17 Lectures" },
+                  ].map((preset) => (
+                    <div key={preset.name} className="flex items-center gap-3 p-4 rounded-2xl border border-zinc-800 bg-[#0f0f11]">
+                      <span className="w-9 h-9 rounded-lg bg-zinc-900 flex items-center justify-center text-sm text-zinc-300">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0 0a9 9 0 01-9-9" /></svg>
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{preset.name}</p>
+                        <span className="text-xs text-zinc-400">{preset.count}</span>
+                      </div>
+                      <button
+                        onClick={() => createSubjectFromName(preset.name)}
+                        className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white transition"
+                      >
+                        + Add to My List
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : !activeVideoId ? (
             <div className="p-6 space-y-6">
@@ -665,7 +872,7 @@ export default function Home() {
                 <div className="rounded-xl border border-white/10 bg-[#0f0f11] px-4 py-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-zinc-300">Importing: {playlistProgress.title}</span>
-                    <span className="text-xs text-zinc-500">{playlistProgress.current}/{playlistProgress.total}</span>
+                    <span className="text-xs text-zinc-400">{playlistProgress.current}/{playlistProgress.total}</span>
                   </div>
                   <div className="w-full bg-white/10 rounded-full h-1.5"><div className="bg-zinc-100 h-1.5 rounded-full transition-all" style={{ width: `${(playlistProgress.current / playlistProgress.total) * 100}%` }} /></div>
                 </div>
@@ -681,7 +888,7 @@ export default function Home() {
                       <div key={entry.day} className="flex items-center gap-4">
                         <span className="w-24 text-sm font-medium text-zinc-300">{entry.day}</span>
                         <input type="time" value={entry.startTime} onChange={(e) => updateSubjectSchedule(activeSubject.id, i, "startTime", e.target.value)} className="text-sm border border-white/10 rounded-lg px-2 py-1.5 bg-black text-zinc-200 outline-none focus:border-white/30" />
-                        <span className="text-zinc-500">to</span>
+                        <span className="text-zinc-400">to</span>
                         <input type="time" value={entry.endTime} onChange={(e) => updateSubjectSchedule(activeSubject.id, i, "endTime", e.target.value)} className="text-sm border border-white/10 rounded-lg px-2 py-1.5 bg-black text-zinc-200 outline-none focus:border-white/30" />
                         {entry.startTime && entry.endTime && <span className="text-xs text-zinc-400 font-medium">{getTimeDiff(entry.startTime, entry.endTime)}</span>}
                       </div>
@@ -696,21 +903,14 @@ export default function Home() {
                     const meta = parseVideoTitle(video.title);
                     return (
                       <div key={video.videoId} onClick={() => handleVideoClick(activeSubject.id, video)}
-                        className="group flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-[#0f0f11] cursor-pointer hover:border-white/20 hover:bg-white/[0.03] transition-all">
-                        <div className="relative w-32 aspect-video rounded-lg overflow-hidden flex-shrink-0 bg-zinc-900">
-                          {video.thumbnailUrl ? (
-                            <img src={video.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                          ) : null}
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                            <span className="text-white/70 text-xs font-semibold tracking-wider">{pad2(idx + 1)}</span>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center group-hover:bg-black/40 transition-colors">
-                            <svg className="w-6 h-6 text-white/90 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                          </div>
+                        className="group flex items-start gap-4 p-5 rounded-xl border border-zinc-800/80 bg-[#0f0f11] cursor-pointer hover:border-white/30 hover:bg-white/[0.03] transition-all">
+                        <div className="relative w-16 h-16 rounded-2xl bg-zinc-900 border border-white/10 flex-shrink-0 flex flex-col items-center justify-center gap-0.5 group-hover:bg-zinc-800 group-hover:border-white/20 transition-colors">
+                          <span className="text-base font-bold text-white leading-none">{pad2(idx + 1)}</span>
+                          <svg className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         </div>
                         <div className="flex-1 min-w-0">
                           <h3 className="font-medium text-sm text-zinc-50 truncate">{meta.topic}</h3>
-                          {meta.subtitle ? <p className="text-xs text-zinc-500 truncate mt-0.5">{meta.subtitle}</p> : null}
+                          {meta.subtitle ? <p className="text-xs text-zinc-400 truncate mt-0.5">{meta.subtitle}</p> : null}
                           {generatingPlan === video.videoId ? (
                             <div className="flex items-center gap-2 mt-2">
                               <svg className="animate-spin h-3 w-3 text-zinc-400" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
@@ -720,10 +920,10 @@ export default function Home() {
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               <span className="text-[11px] bg-zinc-900 border border-white/10 text-zinc-400 px-2 py-0.5 rounded-full">{video.studyPlan.difficulty}</span>
                               <span className="text-[11px] bg-zinc-900 border border-white/10 text-zinc-400 px-2 py-0.5 rounded-full">{video.studyPlan.estimatedStudyTime}</span>
-                              <span className="text-[11px] text-zinc-500">{video.studyPlan.quiz?.length || 0} quiz questions</span>
+                              <span className="text-[11px] text-zinc-400">{video.studyPlan.quiz?.length || 0} quiz questions</span>
                             </div>
                           ) : (
-                            <p className="text-xs text-zinc-500 mt-2">Click to generate study plan</p>
+                            <p className="text-xs text-zinc-400 mt-2">Click to generate study plan</p>
                           )}
                         </div>
                         {isAdmin && (
@@ -736,7 +936,7 @@ export default function Home() {
                   })}
                 </div>
               ) : (
-                <div className="text-center py-12 text-zinc-500">
+                <div className="text-center py-12 text-zinc-400">
                   <svg className="w-12 h-12 mx-auto mb-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                   <p className="text-sm">{isAdmin ? "No lectures yet. Paste a YouTube URL above." : "No lectures yet. Admin hasn't added any content."}</p>
                 </div>
@@ -751,7 +951,7 @@ export default function Home() {
 
               <div>
                 <h2 className="text-xl font-bold text-zinc-50">{videoMeta?.topic || activeVideo.title}</h2>
-                {videoMeta?.subtitle ? <p className="text-sm text-zinc-500 mt-1">{videoMeta.subtitle}</p> : null}
+                {videoMeta?.subtitle ? <p className="text-sm text-zinc-400 mt-1">{videoMeta.subtitle}</p> : null}
                 <div className="flex flex-wrap gap-2 mt-2">
                   <span className="text-xs bg-zinc-900 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full">{activeVideo.studyPlan.difficulty}</span>
                   <span className="text-xs bg-zinc-900 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full">{activeVideo.studyPlan.estimatedStudyTime}</span>
@@ -789,14 +989,13 @@ export default function Home() {
               </div>
 
               {activeTab === "notes" && (
-                <div className="space-y-5">
-                  <div className="rounded-xl border border-white/10 bg-[#0f0f11] p-5">
-                    <h3 className="text-sm font-semibold text-zinc-50 mb-3">Summary</h3>
-                    <p className="text-sm text-zinc-400 leading-relaxed">{activeVideo.studyPlan.summary}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {activeVideo.studyPlan.keyTopics.map((t, i) => <span key={i} className="text-xs bg-zinc-900 border border-white/10 text-zinc-300 px-3 py-1 rounded-full">{t}</span>)}
-                    </div>
-                    <div className="mt-5">
+                <div className="space-y-6">
+                  <article className="rounded-2xl border border-zinc-800/80 bg-[#0f0f11] p-6">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-0.5">Notes &amp; Summary</p>
+                        <h3 className="text-base font-bold text-zinc-50">{videoMeta?.topic || "Study Notes"}</h3>
+                      </div>
                       <DoubtDrawer
                         videoId={activeVideo.videoId}
                         videoTitle={activeVideo.title}
@@ -804,69 +1003,95 @@ export default function Home() {
                         topicSummary={activeVideo.studyPlan.summary}
                       />
                     </div>
-                  </div>
 
-                  <div className="rounded-xl border border-white/10 bg-[#0f0f11] p-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-zinc-50">Full Notes</h3>
-                      {activeVideo.studyPlan.fullNotes && activeVideo.studyPlan.fullNotes.trim().length > 0 && (
-                        <NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="custom" content={activeVideo.studyPlan.fullNotes} title="Save full notes" />
+                    <p className="text-sm text-zinc-300 leading-relaxed">{activeVideo.studyPlan.summary}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {activeVideo.studyPlan.keyTopics.map((t, i) => <span key={i} className="text-xs bg-zinc-900 border border-white/10 text-zinc-300 px-3 py-1 rounded-full">{t}</span>)}
+                    </div>
+
+                    <div className="border-t border-zinc-800/80 mt-5 pt-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-zinc-50">Detailed Notes</h3>
+                        {activeVideo.studyPlan.fullNotes && activeVideo.studyPlan.fullNotes.trim().length > 0 && (
+                          <NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="custom" content={activeVideo.studyPlan.fullNotes} title="Save full notes" />
+                        )}
+                      </div>
+                      {activeVideo.studyPlan.fullNotes && activeVideo.studyPlan.fullNotes.trim().length > 0 ? (
+                        <div className="text-sm text-zinc-400 leading-relaxed whitespace-pre-wrap [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-zinc-100 [&_h2]:mt-4 [&_h2]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-zinc-100 [&_h1]:mt-5 [&_h1]:mb-2 [&_strong]:text-zinc-50 [&_li]:ml-4 [&_ul]:list-disc [&_ol]:list-decimal">
+                          {activeVideo.studyPlan.fullNotes}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-4 py-6">
+                          <p className="text-sm text-zinc-400 text-center max-w-sm">Generate complete, detailed study notes covering everything in this topic.</p>
+                          <button onClick={() => generateFullNotesForVideo(activeSubject.id, activeVideo.videoId)} disabled={generatingNotes}
+                            className="inline-flex items-center gap-2 px-6 py-2.5 bg-white text-black rounded-xl font-medium hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                            {generatingNotes && <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
+                            {generatingNotes ? "Generating full notes..." : "Generate Full Notes"}
+                          </button>
+                        </div>
                       )}
                     </div>
-                    {activeVideo.studyPlan.fullNotes && activeVideo.studyPlan.fullNotes.trim().length > 0 ? (
-                      <div className="text-sm text-zinc-400 leading-relaxed whitespace-pre-wrap [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-5 [&_h1]:mb-2 [&_strong]:text-zinc-50 [&_li]:ml-4 [&_ul]:list-disc [&_ol]:list-decimal">
-                        {activeVideo.studyPlan.fullNotes}
-                      </div>
-                    ) : (
-                      <div className="text-center py-4">
-                        <p className="text-sm text-zinc-500 mb-4">Generate complete, detailed study notes covering everything in this topic.</p>
-                        <button onClick={() => generateFullNotesForVideo(activeSubject.id, activeVideo.videoId)} disabled={generatingNotes}
-                          className="inline-flex items-center gap-2 px-6 py-2.5 bg-white text-black rounded-xl font-medium hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                          {generatingNotes && <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
-                          {generatingNotes ? "Generating full notes..." : "Generate Full Notes"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  </article>
 
                   {activeVideo.studyPlan.revisionPoints && activeVideo.studyPlan.revisionPoints.length > 0 && (
-                    <div className="rounded-xl border border-white/10 bg-[#0f0f11] p-5">
-                      <h3 className="text-sm font-semibold text-zinc-50 mb-3">Revision Points</h3>
-                      <ul className="space-y-2">{activeVideo.studyPlan.revisionPoints.map((p, i) => <li key={i} className="flex items-start gap-2 text-xs text-zinc-400"><span className="text-zinc-200 mt-0.5">✓</span><span className="flex-1">{p}</span><NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={p} /></li>)}</ul>
-                    </div>
+                    <section>
+                      <div className="flex items-baseline gap-2 mb-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">Revision Points</h3>
+                        <span className="text-[11px] text-zinc-400">{activeVideo.studyPlan.revisionPoints.length}</span>
+                      </div>
+                      <ul className="space-y-2">
+                        {activeVideo.studyPlan.revisionPoints.map((p, i) => (
+                          <li key={i} className="flex items-start gap-2.5 text-sm text-zinc-300">
+                            <span className="w-5 h-5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-zinc-300 flex items-center justify-center flex-shrink-0 mt-0.5">{pad2(i + 1)}</span>
+                            <span className="flex-1 leading-relaxed">{p}</span>
+                            <NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={p} />
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
                   )}
 
                   {activeVideo.studyPlan.lastYearNotes && activeVideo.studyPlan.lastYearNotes.length > 0 && (
-                    <div className="rounded-xl border border-white/10 bg-[#0f0f11] p-5">
-                      <h3 className="text-sm font-semibold text-zinc-50 mb-3">Last Year Important Notes</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <section>
+                      <div className="flex items-baseline gap-2 mb-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">Important PYQs</h3>
+                        <span className="text-[11px] text-zinc-400">{activeVideo.studyPlan.lastYearNotes.length}</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {activeVideo.studyPlan.lastYearNotes.map((note, i) => (
-                          <div key={i} className="p-4 rounded-xl bg-black border border-white/10">
-                            <div className="flex items-center justify-between gap-2 mb-2"><h4 className="font-medium text-sm text-zinc-100 flex-1">{note.topic}</h4><span className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-2 py-0.5 rounded-full whitespace-nowrap">{note.frequency}</span><NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={`${note.topic}: ${note.notes}`} title="Save note" /></div>
-                          <p className="text-xs text-zinc-400 mb-2">{note.notes}</p>
-                          <div className="flex flex-wrap gap-1">{note.exams.map((exam, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-500 px-1.5 py-0.5 rounded">{exam}</span>)}</div>
-                        </div>
-                      ))}
-                    </div>
-                    </div>
+                          <div key={i} className="flex flex-col gap-1.5 p-3 rounded-xl border border-zinc-800/80 bg-[#0f0f11]">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-semibold text-zinc-100 flex-1 truncate">{note.topic}</p>
+                              <span className="text-[10px] text-zinc-400 whitespace-nowrap">{note.frequency}</span>
+                              <NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={`${note.topic}: ${note.notes}`} title="Save note" />
+                            </div>
+                            <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">{note.notes}</p>
+                            <div className="flex flex-wrap gap-1">{note.exams.map((exam, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-1.5 py-0.5 rounded">{exam}</span>)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
                   )}
 
                   {activeVideo.studyPlan.predictedTopics && activeVideo.studyPlan.predictedTopics.length > 0 && (
-                    <div className="rounded-xl border border-white/10 bg-[#0f0f11] p-5">
-                      <h3 className="text-sm font-semibold text-zinc-50 mb-3">Predicted Topics 2025-2026</h3>
-                      <div className="space-y-2">
+                    <section>
+                      <div className="flex items-baseline gap-2 mb-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">Predicted Topics</h3>
+                        <span className="text-[11px] text-zinc-400">{activeVideo.studyPlan.predictedTopics.length}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
                         {activeVideo.studyPlan.predictedTopics.map((topic, i) => {
                           const probClass = topic.probability === "High" ? "bg-white/10 text-zinc-200" : topic.probability === "Medium" ? "bg-white/5 text-zinc-300" : "bg-zinc-900 text-zinc-400";
                           return (
-                            <div key={i} className="p-4 rounded-xl bg-black border border-white/10">
-                              <div className="flex items-center gap-3 mb-2"><span className="w-6 h-6 rounded-full bg-white/10 text-zinc-200 text-xs font-bold flex items-center justify-center">{i + 1}</span><h4 className="font-medium text-sm text-zinc-100 flex-1">{topic.topic}</h4><span className={`text-[10px] px-2 py-0.5 rounded-full border border-white/10 ${probClass}`}>{topic.probability}</span></div>
-                              <p className="text-xs text-zinc-400 mb-1 ml-9"><strong>Why:</strong> {topic.reason}</p>
-                              <p className="text-xs text-zinc-300 ml-9"><strong>Tip:</strong> {topic.preparationTip}</p>
+                            <div key={i} title={`Why: ${topic.reason} · Tip: ${topic.preparationTip}`}
+                              className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full border border-zinc-800/80 bg-[#0f0f11]">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full border border-white/10 ${probClass}`}>{topic.probability}</span>
+                              <span className="text-xs font-medium text-zinc-200">{topic.topic}</span>
                             </div>
                           );
                         })}
                       </div>
-                    </div>
+                    </section>
                   )}
                 </div>
               )}
@@ -880,7 +1105,7 @@ export default function Home() {
                         <span className="w-7 h-7 rounded-full bg-white/10 text-zinc-200 text-xs font-bold flex items-center justify-center">{pad2(i + 1)}</span>
                         <span className="text-xs font-mono bg-zinc-900 border border-white/10 text-zinc-400 px-2 py-0.5 rounded">{ch.timestamp}</span>
                         <span className="font-medium text-sm text-zinc-100 flex-1">{ch.title}</span>
-                        <span className="text-[10px] text-zinc-500">{activeChapter === i ? "Playing" : "Watch"}</span>
+                        <span className="text-[10px] text-zinc-400">{activeChapter === i ? "Playing" : "Watch"}</span>
                       </div>
                       {activeChapter === i && (
                         <div className="mt-3 ml-10">
@@ -899,7 +1124,7 @@ export default function Home() {
 
               {activeTab === "quiz" && activeVideo.studyPlan?.quiz && activeVideo.studyPlan.quiz.length === 0 && (
                 <div className="rounded-xl border border-white/10 bg-[#0f0f11] p-6 text-center">
-                  <p className="text-sm text-zinc-500 mb-4">Generate 10 SSC previous-year questions for this topic.</p>
+                  <p className="text-sm text-zinc-400 mb-4">Generate 10 SSC previous-year questions for this topic.</p>
                   <button onClick={() => generateQuizForVideo(activeSubject.id, activeVideo.videoId)} disabled={generatingQuiz}
                     className="inline-flex items-center gap-2 px-6 py-2.5 bg-white text-black rounded-xl font-medium hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     {generatingQuiz && <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
@@ -935,7 +1160,7 @@ export default function Home() {
                           <div className="flex items-start gap-3 mb-3">
                             <span className="w-6 h-6 rounded-full bg-white/10 text-zinc-200 text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
                             <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1"><span className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-2 py-0.5 rounded-full">{q.difficulty}</span>{q.year && <span className="text-[10px] text-zinc-500">{q.exam || 'SSC'} {q.year}</span>}</div>
+                              <div className="flex items-center gap-2 mb-1"><span className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-2 py-0.5 rounded-full">{q.difficulty}</span>{q.year && <span className="text-[10px] text-zinc-400">{q.exam || 'SSC'} {q.year}</span>}</div>
                               <p className="text-sm font-medium text-zinc-50">{q.question}</p>
                             </div>
                             <NotesButton
@@ -956,7 +1181,7 @@ export default function Home() {
                               return (
                                 <button key={j} onClick={() => !quizSubmitted && setQuizAnswers({ ...quizAnswers, [globalIdx]: j })} disabled={quizSubmitted}
                                   className={`w-full text-left p-3 rounded-lg border text-sm transition-colors ${optClass} ${quizSubmitted ? "cursor-default" : "cursor-pointer"}`}>
-                                  <span className="font-medium text-zinc-500 mr-2">{String.fromCharCode(65 + j)}.</span>
+                                  <span className="font-medium text-zinc-400 mr-2">{String.fromCharCode(65 + j)}.</span>
                                   <span className="text-zinc-300">{opt}</span>
                                   {quizSubmitted && j === q.correctAnswer && <span className="ml-2 text-zinc-100">✓</span>}
                                   {quizSubmitted && isSelected && j !== q.correctAnswer && <span className="ml-2 text-red-400">✗</span>}

@@ -235,7 +235,7 @@ export default function NotesPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
             </svg>
             <p className="text-zinc-500 dark:text-zinc-400">No notes saved yet.</p>
-            <p className="text-sm text-zinc-400 dark:text-zinc-600 mt-1">
+            <p className="text-sm text-zinc-400 mt-1">
               Use the bookmark icon on study points, quiz questions, or doubt answers.
             </p>
           </div>
