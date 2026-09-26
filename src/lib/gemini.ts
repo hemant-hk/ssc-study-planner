@@ -55,6 +55,26 @@ export class AIProviderError extends Error {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Turn a provider error body into a short, actionable message. Raw JSON like
+// {"error":{"message":"Invalid API Key","code":"expired_api_key"}} is confusing
+// in the UI, so we surface the human-readable reason instead.
+function describeApiError(status: number, body: string): string {
+  let parsed: { error?: { message?: string; code?: string } } | null = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    parsed = null;
+  }
+  const message = parsed?.error?.message?.trim() || body.slice(0, 200);
+  const code = parsed?.error?.code || "";
+  if (/expired_api_key|invalid_api_key|invalid key|api key expired/i.test(`${message} ${code}`)) {
+    return "The API key is invalid or expired. Update it in Settings.";
+  }
+  if (status === 429) return "AI is rate limited. Please wait a moment and try again.";
+  if (status === 401 || status === 403) return "Unauthorized API key. Update it in Settings.";
+  return message.slice(0, 300);
+}
+
 const GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"];
 const MODEL_TOKEN_CAPS: Record<string, number> = { "qwen/qwen3.8-27b": 900 };
 
@@ -156,7 +176,7 @@ export async function callGroq(
         }
       }
 
-      lastError = text.slice(0, 200);
+      lastError = describeApiError(res.status, text);
       lastStatus = res.status || 500;
       if (res.status === 429) {
         sawRateLimit = true;
@@ -225,7 +245,9 @@ export async function callGemini(
         }
 
         if (!res.ok) {
-          lastError = JSON.stringify(data).slice(0, 200);
+          lastError = data?.error?.message
+            ? describeApiError(res.status, JSON.stringify(data))
+            : `Gemini error ${res.status}: ${JSON.stringify(data).slice(0, 200)}`;
           continue;
         }
 
