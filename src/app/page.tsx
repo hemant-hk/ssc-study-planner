@@ -5,6 +5,7 @@ import DoubtDrawer from "@/components/DoubtDrawer";
 import DiscussionThread from "@/components/DiscussionThread";
 import NotesButton from "@/components/NotesButton";
 import { getCachedPlan, getCachedPlans, setCachedPlan, deleteCachedPlan } from "@/lib/study-cache";
+import { SSC_NOTICES } from "@/lib/ssc-notices";
 
 interface VideoInfo {
   videoId: string;
@@ -88,38 +89,6 @@ const DAILY_QUOTES = [
   "You can't outsource this. No one else's discipline pays your salary.",
   "Exposure, repetition, recall. Do your three rounds today, without negotiation.",
   "The seat in the merit list belongs to whoever refuses to be average at 2 AM.",
-];
-
-interface SscExam {
-  title: string;
-  applyStarts: string;
-  lastDate: string;
-  examWindow: string;
-  status: "Upcoming" | "Active Now" | "Closed";
-}
-
-const SSC_CALENDAR: SscExam[] = [
-  {
-    title: "SSC CGL",
-    applyStarts: "Expected June 2026",
-    lastDate: "TBD",
-    examWindow: "Sep – Oct 2026",
-    status: "Upcoming",
-  },
-  {
-    title: "SSC CHSL",
-    applyStarts: "Expected April 2026",
-    lastDate: "May 2026",
-    examWindow: "Tier-1: July 2026",
-    status: "Upcoming",
-  },
-  {
-    title: "SSC CPO / MTS",
-    applyStarts: "Expected March 2026",
-    lastDate: "TBD",
-    examWindow: "May – Jun 2026",
-    status: "Upcoming",
-  },
 ];
 
 export default function Home() {
@@ -601,6 +570,9 @@ export default function Home() {
               <a href="/mock-test" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
                 Mock Tests
               </a>
+              <a href="/notice" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
+                Notices
+              </a>
               <span className="text-xs bg-white/5 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full whitespace-nowrap">
                 {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
               </span>
@@ -685,6 +657,10 @@ export default function Home() {
                   <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   Mock Tests
                 </a>
+                <a href="/notice" onClick={() => setShowSidebar(false)} className="flex items-center gap-2.5 p-2.5 rounded-lg text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
+                  <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                  Notices
+                </a>
               </div>
             </div>
         </aside>
@@ -713,26 +689,31 @@ export default function Home() {
               </div>
 
               <section>
-                <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">SSC Exam Calendar & Application Dates</h2>
-                <div className="space-y-3">
-                  {SSC_CALENDAR.map((exam) => (
-                    <div key={exam.title} className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-5">
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <h3 className="text-base font-semibold text-white">{exam.title}</h3>
-                        <span className={`inline-flex items-center text-[11px] px-2.5 py-1 rounded-full ${exam.status === "Active Now" ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300" : "bg-zinc-900 border border-zinc-800 text-zinc-300"}`}>
-                          {exam.status}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 mb-4 text-xs text-zinc-400">
-                        <span><span className="text-zinc-200 font-medium">Apply Starts:</span> {exam.applyStarts}</span>
-                        <span><span className="text-zinc-200 font-medium">Last Date:</span> {exam.lastDate}</span>
-                        <span><span className="text-zinc-200 font-medium">Exam:</span> {exam.examWindow}</span>
-                      </div>
-                      <a href="https://ssc.gov.in" target="_blank" rel="noopener noreferrer" className="inline-block border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs px-3 py-1.5 rounded-lg transition-colors">
-                        Official Portal (ssc.gov.in)
-                      </a>
+                <div className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div>
+                      <p className="text-[11px] font-semibold text-zinc-400 tracking-widest uppercase mb-1">Official Notices</p>
+                      <h3 className="text-base font-semibold text-white">SSC Exam Calendar & Application Dates</h3>
                     </div>
-                  ))}
+                    <a href="/notice" className="inline-block border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs px-3 py-1.5 rounded-lg transition-colors">
+                      View Notices →
+                    </a>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {SSC_NOTICES.map((n) => {
+                      const keyDate = n.dates.find((d) => d.important)?.value || n.dates[0]?.value || "";
+                      const live = n.status === "Active Now";
+                      return (
+                        <span key={n.exam} className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full border ${live ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-900 text-zinc-300"}`}>
+                          <span className="relative flex h-1.5 w-1.5" aria-hidden>
+                            {live && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />}
+                            <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${live ? "bg-emerald-500" : "bg-zinc-500"}`} />
+                          </span>
+                          {n.exam} · {keyDate}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               </section>
             </div>
