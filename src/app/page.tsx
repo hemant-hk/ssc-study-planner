@@ -92,6 +92,8 @@ export default function Home() {
   const [showNewSubject, setShowNewSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [url, setUrl] = useState("");
+  const [importUrl, setImportUrl] = useState("");
+  const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
@@ -273,6 +275,109 @@ export default function Home() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify(newSubject),
       });
+    }
+  }
+
+  function createSubjectFromName(name: string) {
+    const clean = name.trim();
+    if (!clean) return;
+    const existing = subjects.find((s) => s.name.toLowerCase() === clean.toLowerCase());
+    if (existing) {
+      setActiveSubjectId(existing.id);
+      setActiveVideoId(null);
+      setShowSidebar(false);
+      return;
+    }
+    const newSubject: Subject = {
+      id: Date.now().toString(),
+      name: clean,
+      color: COLORS[subjects.length % COLORS.length],
+      videos: [],
+      schedule: DAYS.map((day) => ({ day, startTime: "", endTime: "" })),
+      createdAt: new Date().toISOString(),
+    };
+    setSubjects((prev) => [...prev, newSubject]);
+    setActiveSubjectId(newSubject.id);
+    setActiveVideoId(null);
+    setShowSidebar(false);
+    if (isAdmin) {
+      fetch("/api/subjects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
+        body: JSON.stringify(newSubject),
+      });
+    }
+  }
+
+  async function importPlaylistFromHome() {
+    if (!importUrl.trim() || importing) return;
+    setImporting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/study-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: importUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to process URL");
+
+      let name = "";
+      let videos: SubjectVideo[] = [];
+      if (data.type === "playlist") {
+        name = data.playlist.title;
+        videos = (data.playlist.videos || []).map((v: { videoId: string; title: string; thumbnailUrl: string }) => ({
+          videoId: v.videoId,
+          title: v.title,
+          thumbnailUrl: v.thumbnailUrl,
+          studyPlan: null,
+        }));
+      } else if (data.type === "video") {
+        name = data.videoInfo?.title;
+        videos = [
+          {
+            videoId: data.videoInfo.videoId,
+            title: data.videoInfo.title,
+            thumbnailUrl: data.videoInfo.thumbnailUrl,
+            studyPlan: null,
+          },
+        ];
+      }
+      if (!name) name = "Imported Subject";
+
+      const existing = subjects.find((s) => s.name.toLowerCase() === name.toLowerCase());
+      if (existing) {
+        setActiveSubjectId(existing.id);
+        setActiveVideoId(null);
+        setImportUrl("");
+        setError("");
+        return;
+      }
+
+      const newSubject: Subject = {
+        id: Date.now().toString(),
+        name,
+        color: COLORS[subjects.length % COLORS.length],
+        videos,
+        schedule: DAYS.map((day) => ({ day, startTime: "", endTime: "" })),
+        createdAt: new Date().toISOString(),
+      };
+      setSubjects((prev) => [...prev, newSubject]);
+      setActiveSubjectId(newSubject.id);
+      setActiveVideoId(null);
+      setImportUrl("");
+      setError("");
+      if (isAdmin) {
+        fetch("/api/subjects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAdminToken()}` },
+          body: JSON.stringify(newSubject),
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import playlist");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -614,21 +719,94 @@ export default function Home() {
 
         <main className="flex-1 overflow-y-auto">
           {!activeSubject ? (
-            <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <div className="relative mb-6">
-                <div className="absolute inset-0 bg-gradient-to-b from-zinc-200/20 to-transparent blur-2xl rounded-full" />
-                <svg className="w-16 h-16 text-zinc-300 relative" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+            <div className="min-h-full p-6 md:p-10 max-w-5xl mx-auto w-full">
+              {error && <div className="mb-6 rounded-xl border border-red-900/40 bg-red-950/40 px-4 py-3 text-red-300 text-sm">{error}</div>}
+
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+                <div>
+                  <p className="text-xs font-semibold tracking-widest text-zinc-400 mb-1">SSC PREPARATION DASHBOARD</p>
+                  <h1 className="text-xl font-bold text-white">Build Your Smart Study Plan</h1>
+                </div>
+                <span className="inline-flex items-center gap-1.5 border border-zinc-800 bg-zinc-950 px-3 py-1 rounded-full text-xs text-zinc-300">
+                  <span aria-hidden>⏳</span> SSC CGL 2025
+                </span>
               </div>
-              <h2 className="text-xl font-semibold text-zinc-50 mb-2">Create your first subject</h2>
-              <p className="text-zinc-500 max-w-sm mb-6">Organize your preparation by subject, add YouTube lectures, and generate AI-powered study plans.</p>
-              {isAdmin ? (
-                <button onClick={() => setShowSidebar(true)} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-black rounded-lg font-medium hover:bg-zinc-200 transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                  Create Subject
-                </button>
-              ) : (
-                <p className="text-sm text-zinc-500">Ask the admin to log in and add subjects.</p>
-              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
+                <div className="border border-dashed border-zinc-700 bg-zinc-950/60 p-5 rounded-2xl hover:border-zinc-500 transition">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="w-10 h-10 rounded-lg bg-zinc-900 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-zinc-200" viewBox="0 0 24 24" fill="currentColor"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" /></svg>
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Import Playlist</h3>
+                      <p className="text-xs text-zinc-400">Auto-generate chapters and notes from any YouTube playlist.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={importUrl}
+                      onChange={(e) => setImportUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && importPlaylistFromHome()}
+                      placeholder="Paste YouTube playlist / video URL…"
+                      className="flex-1 min-w-0 text-sm rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-500"
+                    />
+                    <button
+                      onClick={importPlaylistFromHome}
+                      disabled={importing || !importUrl.trim()}
+                      className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold hover:bg-zinc-200 disabled:opacity-50 transition"
+                    >
+                      {importing ? "Importing…" : "Import"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-dashed border-zinc-700 bg-zinc-950/60 p-5 rounded-2xl hover:border-zinc-500 transition">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="w-10 h-10 rounded-lg bg-zinc-900 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-zinc-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Manual Subject</h3>
+                      <p className="text-xs text-zinc-400">Add custom topics, video links, and notes manually.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setShowNewSubject(true); setShowSidebar(true); }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition ml-[52px]"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    Create Subject
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-xs uppercase text-zinc-400 tracking-wider mb-3">Or Start with Popular Modules</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {[
+                    { name: "FRB 2.0 History (Parmar SSC)", count: "23 Lectures" },
+                    { name: "Complete Geography", count: "17 Lectures" },
+                  ].map((preset) => (
+                    <div key={preset.name} className="flex items-center gap-3 p-4 rounded-2xl border border-zinc-800 bg-[#0f0f11]">
+                      <span className="w-9 h-9 rounded-lg bg-zinc-900 flex items-center justify-center text-sm text-zinc-300">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0 0a9 9 0 01-9-9" /></svg>
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{preset.name}</p>
+                        <span className="text-xs text-zinc-400">{preset.count}</span>
+                      </div>
+                      <button
+                        onClick={() => createSubjectFromName(preset.name)}
+                        className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white transition"
+                      >
+                        + Add to My List
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : !activeVideoId ? (
             <div className="p-6 space-y-6">
