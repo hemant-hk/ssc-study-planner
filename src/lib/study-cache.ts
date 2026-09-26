@@ -1,37 +1,18 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { StudyPlan } from "./gemini";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-// Study plans are stored in the Supabase `study_cache` table instead of local
-// files (read-only on serverless runtimes like Vercel) or localStorage (lost on
-// other devices). Rows: key = videoId, data = plan (jsonb).
+// Study plans are cached in the Supabase `study_cache` table so they sync
+// across devices. The browser talks to it through the server-side proxy at
+// /api/cache (which uses the server Supabase secrets) instead of connecting to
+// Supabase directly — that avoids anon-key/RLS config that can silently block
+// cross-device reads.
 //
-// The anon key is safe to use from the browser; make sure the table grants the
-// anon role SELECT/INSERT/UPDATE/DELETE via RLS for it to work in production.
-//
-// Offline / ISP-blocked fallback: Supabase is the primary store, but when a
-// network failure (ERR_NAME_NOT_RESOLVED, "fetch failed", DNS errors, etc.)
-// makes it unreachable we gracefully fall back to the browser's localStorage
-// so cached plans survive outages. Reads try Supabase first and fall back to
-// localStorage; writes go to both places.
-const TABLE = "study_cache";
+// localStorage is used ONLY as an offline / ISP-blocked fallback: if the app
+// is genuinely offline (DNS failure, no network), reads fall back to the
+// browser's copy so previously generated plans still appear.
 const LS_PREFIX = "studycache:";
 
-let client: SupabaseClient | null = null;
-
-function getClient(): SupabaseClient | null {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
-  if (!client) {
-    client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  }
-  return client;
-}
-
-// True when Supabase is unreachable due to a network problem (DNS resolution,
-// ISP block, offline, connection reset). Supabase-js surfaces these as thrown
-// fetch errors ("fetch failed" / "Failed to fetch") or as an error payload.
+// True when the device is truly offline (DNS resolution, ISP block, connection
+// reset). Supabase-js / fetch surface these as thrown fetch errors.
 function isNetworkError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION|fetch failed|failed to fetch|networkerror|network error|network request failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|load failed/i.test(
@@ -102,56 +83,66 @@ function lsDelete(videoId: string): void {
 }
 
 export async function getCachedPlans(): Promise<Record<string, StudyPlan>> {
-  const localPlans = lsReadAll();
-  const db = getClient();
-  if (!db) return localPlans;
   try {
-    const { data, error } = await db.from(TABLE).select("key, data");
-    if (error || !data) return localPlans;
-    const plans: Record<string, StudyPlan> = { ...localPlans };
-    for (const row of data) {
-      if (row.key) plans[row.key as string] = row.data as StudyPlan;
+    const res = await fetch("/api/cache");
+    if (res.ok) {
+      const body = (await res.json()) as { plans?: Record<string, StudyPlan> };
+      return body.plans || {};
     }
-    return plans;
+    // Server-side Supabase not configured (503): nothing to sync from, and the
+    // request reached the server so the network is fine — still serve local.
+    if (res.status === 503) return lsReadAll();
+    return {};
   } catch (err) {
-    if (isNetworkError(err)) return localPlans;
+    // Truly offline: fall back to the browser's copy.
+    if (isNetworkError(err)) return lsReadAll();
     return {};
   }
 }
 
 export async function getCachedPlan(videoId: string): Promise<StudyPlan | null> {
-  const localPlan = lsRead(videoId);
-  const db = getClient();
-  if (!db) return localPlan;
   try {
-    const { data, error } = await db.from(TABLE).select("data").eq("key", videoId).maybeSingle();
-    if (error || !data) return localPlan;
-    return data.data as StudyPlan;
+    const res = await fetch(`/api/cache?key=${encodeURIComponent(videoId)}`);
+    if (res.ok) {
+      const body = (await res.json()) as { plan?: StudyPlan | null };
+      return body.plan || null;
+    }
+    if (res.status === 503) return lsRead(videoId);
+    return null;
   } catch (err) {
-    if (isNetworkError(err)) return localPlan;
+    if (isNetworkError(err)) return lsRead(videoId);
     return null;
   }
 }
 
 export async function setCachedPlan(videoId: string, plan: StudyPlan): Promise<void> {
-  // Write to both stores so the plan survives offline sessions unchanged.
-  lsWrite(videoId, plan);
-  const db = getClient();
-  if (!db) return;
+  // Supabase (via /api/cache) is the source of truth for cross-device sync.
+  // localStorage gets a copy only when the write couldn't reach the server
+  // (offline / server Supabase not configured) so it persists as a fallback.
   try {
-    await db.from(TABLE).upsert({ key: videoId, data: plan }, { onConflict: "key" });
-  } catch {
-    // Cache writes are best-effort; the localStorage copy above persists.
+    const res = await fetch("/api/cache", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: videoId, data: plan }),
+    });
+    if (res.ok) return;
+    if (res.status === 503) lsWrite(videoId, plan);
+  } catch (err) {
+    // Truly offline: keep the plan locally so it isn't lost.
+    if (isNetworkError(err)) lsWrite(videoId, plan);
   }
 }
 
 export async function deleteCachedPlan(videoId: string): Promise<void> {
+  // Clean up both stores so a later offline read can't resurrect the plan.
   lsDelete(videoId);
-  const db = getClient();
-  if (!db) return;
   try {
-    await db.from(TABLE).delete().eq("key", videoId);
+    await fetch("/api/cache", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: videoId }),
+    });
   } catch {
-    // Best-effort cleanup.
+    // Best-effort cleanup; the local copy is already removed.
   }
 }
