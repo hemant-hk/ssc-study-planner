@@ -175,7 +175,7 @@ export default function PYQCard({ pyq }: { pyq: PYQ }) {
         <button
           onClick={askDoubt}
           disabled={doubtLoading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white text-black hover:bg-zinc-200 disabled:opacity-50 transition-colors"
         >
           {doubtLoading ? (
             <>

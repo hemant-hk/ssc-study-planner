@@ -161,12 +161,12 @@ export default function DiscussionThread({ videoId }: DiscussionThreadProps) {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Ask a question or share an insight…"
-                className="flex-1 text-sm border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-blue-500"
+                className="flex-1 text-sm border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-white/50"
               />
               <button
                 type="submit"
                 disabled={posting || !author.trim() || !text.trim()}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {posting ? "Posting…" : "Post"}
               </button>

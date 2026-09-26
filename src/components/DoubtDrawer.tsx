@@ -168,7 +168,7 @@ try {
                 <div
                   className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
                     m.role === "user"
-                      ? "bg-purple-600 text-white rounded-br-none"
+                      ? "bg-zinc-800 text-white rounded-br-none"
                       : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 rounded-bl-none"
                   }`}
                 >
@@ -205,12 +205,12 @@ try {
               onKeyDown={(e) => e.key === "Enter" && send()}
               placeholder="Type your doubt…"
               disabled={loading}
-              className="flex-1 text-sm border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-purple-500 disabled:opacity-60"
+              className="flex-1 text-sm border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-white/50 disabled:opacity-60"
             />
             <button
               onClick={send}
               disabled={loading || !input.trim()}
-              className="px-3 py-2 rounded-lg bg-purple-600 text-white disabled:opacity-50 hover:bg-purple-700 transition-colors"
+              className="px-3 py-2 rounded-lg bg-white text-black disabled:opacity-50 hover:bg-zinc-200 transition-colors"
             >
               {loading ? (
                 <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">

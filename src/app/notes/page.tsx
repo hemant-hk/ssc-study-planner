@@ -170,7 +170,7 @@ export default function NotesPage() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2">
-              <svg className="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
               </svg>
               <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Study Planner</h1>
@@ -180,7 +180,7 @@ export default function NotesPage() {
             <Link href="/" className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">
               Home
             </Link>
-            <a href="/mock-test" className="text-sm bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+            <a href="/mock-test" className="text-sm bg-zinc-900 dark:bg-zinc-800 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
               Mock Tests
             </a>
           </div>
@@ -206,7 +206,7 @@ export default function NotesPage() {
             <button
               onClick={printNotes}
               disabled={notes.length === 0}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-40 transition-colors"
+              className="px-4 py-2 bg-white text-black rounded-lg text-sm font-medium hover:bg-zinc-200 disabled:opacity-40 transition-colors"
             >
               Print
             </button>
@@ -272,7 +272,7 @@ export default function NotesPage() {
                                   {note.videoId && (
                                     <a
                                       href={`/?vid=${encodeURIComponent(note.videoId)}`}
-                                      className="text-[10px] text-zinc-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+                                      className="text-[10px] text-zinc-400 hover:text-white transition-colors"
                                     >
                                       view video
                                     </a>

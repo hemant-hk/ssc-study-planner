@@ -143,7 +143,7 @@ export default function MockTest() {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-black p-6">
         <div className="max-w-4xl mx-auto">
-          <Link href="/" className="text-sm text-red-600 hover:underline mb-6 block">← Back to Study Planner</Link>
+          <Link href="/" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors mb-6 block">← Back to Study Planner</Link>
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50 mb-2">Mock Tests</h1>
           <p className="text-zinc-500 dark:text-zinc-400 mb-8">SSC CGL style mock tests with real-time timer</p>
 
@@ -161,7 +161,7 @@ export default function MockTest() {
                   {subjects.find((s) => s.name === subject)?.topics.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               )}
-              <button onClick={() => { setTestType("topic"); startTest(); }} disabled={!subject || !topic || loading} className="w-full py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50">
+              <button onClick={() => { setTestType("topic"); startTest(); }} disabled={!subject || !topic || loading} className="w-full py-2.5 bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg font-medium hover:bg-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50">
                 {loading ? "Generating..." : "Start Topic Test"}
               </button>
             </div>
@@ -173,12 +173,12 @@ export default function MockTest() {
                 <option value="">Select Subject</option>
                 {subjects.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
               </select>
-              <button onClick={() => { setTestType("subject"); startTest(); }} disabled={!subject || loading} className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">
+              <button onClick={() => { setTestType("subject"); startTest(); }} disabled={!subject || loading} className="w-full py-2.5 bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg font-medium hover:bg-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50">
                 {loading ? "Generating..." : "Start Subject Test"}
               </button>
             </div>
 
-            <div className="rounded-xl border-2 border-red-300 dark:border-red-700 bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950 dark:to-orange-950 p-6">
+            <div className="rounded-xl border border-white/10 bg-[#0f0f11] p-6">
               <h2 className="text-lg font-semibold mb-2">Full SSC CGL Mock</h2>
               <p className="text-sm text-zinc-500 mb-2">100 questions · 60 minutes</p>
               <div className="text-xs text-zinc-500 mb-4 space-y-1">
@@ -187,7 +187,7 @@ export default function MockTest() {
                 <p>• Mathematics: 25Q · 15min</p>
                 <p>• English: 25Q · 15min</p>
               </div>
-              <button onClick={() => { setTestType("full"); startTest(); }} disabled={loading} className="w-full py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50">
+              <button onClick={() => { setTestType("full"); startTest(); }} disabled={loading} className="w-full py-2.5 bg-white text-black rounded-lg font-medium hover:bg-zinc-200 disabled:opacity-50">
                 {loading ? "Generating..." : "Start Full Mock Test"}
               </button>
             </div>
@@ -217,7 +217,7 @@ export default function MockTest() {
               <div className="flex gap-2">
                 {sections.map((s, i) => (
                   <button key={i} onClick={() => { setCurrentSection(i); setCurrentQuestion(0); setSectionTimeLeft(15 * 60); }}
-                    className={`text-xs px-3 py-1 rounded-full ${i === currentSection ? "bg-red-600 text-white" : i < currentSection ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"}`}>
+                    className={`text-xs px-3 py-1 rounded-full ${i === currentSection ? "bg-white text-black" : i < currentSection ? "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"}`}>
                     {s.name}
                   </button>
                 ))}
@@ -227,10 +227,10 @@ export default function MockTest() {
           <div className="flex items-center gap-6">
             <div className="text-sm"><span className="text-zinc-500">Answered:</span> <span className="font-semibold">{answeredCount}/{totalQ}</span></div>
             {testType === "full" && (
-              <div className="text-sm"><span className="text-zinc-500">Section:</span> <span className={`font-semibold ${sectionTimeLeft < 120 ? "text-red-600" : ""}`}>{formatTime(sectionTimeLeft)}</span></div>
+              <div className="text-sm"><span className="text-zinc-500">Section:</span> <span className={`font-semibold ${sectionTimeLeft < 120 ? "text-amber-400" : ""}`}>{formatTime(sectionTimeLeft)}</span></div>
             )}
-            <div className={`text-lg font-bold ${timeLeft < 300 ? "text-red-600" : "text-zinc-900 dark:text-zinc-50"}`}>{formatTime(timeLeft)}</div>
-            <button onClick={submitTest} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">Submit</button>
+            <div className={`text-lg font-bold ${timeLeft < 300 ? "text-amber-400" : "text-zinc-900 dark:text-zinc-50"}`}>{formatTime(timeLeft)}</div>
+            <button onClick={submitTest} className="px-4 py-2 bg-white text-black rounded-lg text-sm font-medium hover:bg-zinc-200">Submit</button>
           </div>
         </div>
 
@@ -244,7 +244,7 @@ export default function MockTest() {
             <div className="space-y-3">
               {q.options.map((opt, i) => (
                 <button key={i} onClick={() => selectAnswer(currentQuestion, i)}
-                  className={`w-full text-left p-4 rounded-lg border transition-all ${selected === i ? "border-blue-500 bg-blue-50 dark:bg-blue-950" : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"}`}>
+                  className={`w-full text-left p-4 rounded-lg border transition-all ${selected === i ? "border-white/50 bg-white/10" : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"}`}>
                   <span className="font-medium text-zinc-500 mr-3">{String.fromCharCode(65 + i)}.</span>{opt}
                 </button>
               ))}
@@ -257,7 +257,7 @@ export default function MockTest() {
             <div className="flex gap-2 flex-wrap justify-center">
               {qs.map((_, i) => (
                 <button key={i} onClick={() => setCurrentQuestion(i)}
-                  className={`w-8 h-8 rounded text-xs font-medium ${i === currentQuestion ? "bg-red-600 text-white" : getAnswer(i) !== undefined ? "bg-green-100 dark:bg-green-900 text-green-700" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"}`}>
+                  className={`w-8 h-8 rounded text-xs font-medium ${i === currentQuestion ? "bg-white text-black" : getAnswer(i) !== undefined ? "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"}`}>
                   {i + 1}
                 </button>
               ))}
@@ -288,7 +288,7 @@ export default function MockTest() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50 mb-2">Test Results</h1>
-            <div className={`text-6xl font-bold ${percentage >= 70 ? "text-green-600" : percentage >= 50 ? "text-yellow-600" : "text-red-600"}`}>{percentage}%</div>
+            <div className={`text-6xl font-bold ${percentage >= 70 ? "text-emerald-400" : percentage >= 50 ? "text-amber-400" : "text-red-400"}`}>{percentage}%</div>
             <p className="text-zinc-500 mt-2">Score: {score}/{maxScore}</p>
           </div>
 
@@ -307,7 +307,7 @@ export default function MockTest() {
                   <div key={i} className="flex items-center gap-4">
                     <span className="w-32 text-sm font-medium">{r.name}</span>
                     <div className="flex-1 bg-zinc-100 dark:bg-zinc-800 rounded-full h-4 overflow-hidden">
-                      <div className="bg-green-500 h-4 rounded-full" style={{ width: `${(r.correct / r.total) * 100}%` }} />
+                      <div className="bg-emerald-400 h-4 rounded-full" style={{ width: `${(r.correct / r.total) * 100}%` }} />
                     </div>
                     <span className="text-sm text-zinc-500 w-20 text-right">{r.correct}/{r.total}</span>
                   </div>
@@ -345,7 +345,7 @@ export default function MockTest() {
 
           <div className="flex gap-4 justify-center">
             <button onClick={() => { setMode("menu"); setTestStarted(false); }} className="px-6 py-3 bg-zinc-200 dark:bg-zinc-800 rounded-lg font-medium">Back to Menu</button>
-            <button onClick={() => { startTest(); }} className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Retake Test</button>
+            <button onClick={() => { startTest(); }} className="px-6 py-3 bg-white text-black rounded-lg font-medium hover:bg-zinc-200">Retake Test</button>
           </div>
         </div>
       </div>

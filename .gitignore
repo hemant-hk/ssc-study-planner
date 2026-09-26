@@ -42,6 +42,7 @@ yarn-error.log*
 next-env.d.ts
 
 # runtime data
+/data/study-cache.json
 /data/study-plans.json
 /data/video-info.json
 /data/notes.json
