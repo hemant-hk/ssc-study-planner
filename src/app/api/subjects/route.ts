@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
-import { isAdminBearer } from "@/lib/admin-password";
+import { isAdminRequest } from "@/lib/auth-store";
 import { getServerSupabase } from "@/lib/server-supabase";
 
 // Subjects (and the study plans embedded in their videos) are stored in the
@@ -133,7 +133,7 @@ async function persistSubjects(subjects: Subject[]): Promise<void> {
 }
 
 function isAdmin(request: NextRequest): Promise<boolean> {
-  return isAdminBearer(request.headers.get("authorization"));
+  return isAdminRequest(request);
 }
 
 export async function GET() {
