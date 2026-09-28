@@ -134,7 +134,7 @@ export default function Home() {
   const [completedVideos, setCompletedVideos] = useState<Record<string, boolean>>({});
   const [revCheck, setRevCheck] = useState<Record<string, number[]>>({});
   // "checking" | "cloud" | "file" | "off" — which storage syncs your data across
-  // devices. cloud = Supabase reachable, file = this server's own store,
+  // devices. cloud = Upstash Redis reachable, file = this server's own store,
   // off = only this browser (neither cloud nor server store available).
   const [syncStatus, setSyncStatus] = useState<"checking" | "cloud" | "file" | "off">("checking");
   // Live SSC notice board (admin-editable via /api/notices); falls back to the
@@ -156,7 +156,7 @@ export default function Home() {
 
   useEffect(() => {
     // Probe which store answers, so the UI can show whether data syncs across
-    // devices and what backs it (Supabase cloud vs this server's file).
+    // devices and what backs it (Upstash Redis cloud vs this server's file).
     fetch("/api/cache?probe=1")
       .then((res) => (res.ok ? res.json() : { store: "off" }))
       .then((body: { store?: string }) => {
@@ -690,7 +690,7 @@ export default function Home() {
                   : syncStatus === "file"
                   ? "bg-white/5 border-white/10 text-zinc-400"
                   : "bg-white/5 border-white/10 text-zinc-400"
-              }`} title={syncStatus === "cloud" ? "Data saves to the Supabase cloud and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
+              }`} title={syncStatus === "cloud" ? "Data saves to the cloud (Upstash Redis) and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
                 {syncStatus === "cloud" ? "Cloud sync" : syncStatus === "file" ? "Server sync" : "Local only"}
               </span>
             )}

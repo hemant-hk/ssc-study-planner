@@ -2,7 +2,7 @@
 
 Video → study-plan web app with AI-generated summaries, quizzes, chapter notes,
 PYQ bank, mock tests, and **cross-device cloud sync** of subjects and study plans
-via Supabase.
+via Upstash Redis.
 
 ## Getting Started
 
@@ -20,30 +20,29 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Cloud sync (Supabase) setup
+## Cloud sync (Upstash Redis) setup
 
-The app saves subjects and study plans to Supabase so they survive refreshes
-and sync across devices. It needs two things configured **once**:
+The app saves subjects and study plans to Upstash Redis so they survive refreshes
+and sync across devices. It needs two environment variables configured **once**:
 
-1. **Create the table (one-time, in Supabase).**
-   - Supabase Dashboard → your project → **SQL Editor**.
-   - Open `supabase/schema.sql` from this repo, paste it, and click **Run**.
-   - This creates the `study_cache` table and the RLS policies. Rows store both
-     study plans (keyed by videoId) and subjects (keyed by `subject:<id>`), plus
-     a one-time seed marker.
+1. Create a free database at [Upstash Redis](https://console.upstash.com/redis)
+   (Serverless Redis, REST region nearest to your users).
+2. Copy `.env.local.example` → `.env.local` for local dev and set the same values
+   in your deployed environment:
+   - `UPSTASH_REDIS_REST_URL` — the `UPSTASH_REDIS_REST_URL` value from your
+     Upstash database's **REST API** tab (e.g. `https://your-db.upstash.io`).
+   - `UPSTASH_REDIS_REST_TOKEN` — the `UPSTASH_REDIS_REST_TOKEN` value from the
+     same tab (a long `eyJ...` bearer token).
 
-2. **Set the environment variables** (copy `.env.local.example` →
-   `.env.local` for local dev, and set the same values in **Vercel → Settings →
-   Environment Variables**):
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY` — optional but recommended (bypasses RLS; never
-     expose this one to the browser).
+No table schema is needed: subjects live in a Redis hash `subjects` (one field
+`subject:<id>` per subject, plus a `subject:__seeded__` marker) and study plans
+live in the Redis hash `study_cache` (one field per videoId).
 
-> If the cloud is unreachable (offline, misconfigured, table missing), the app
-> automatically falls back to the browser's localStorage so you never lose work.
-> A **"Cloud: On / Cloud: Off"** badge in the header shows whether data is being
-> saved to the cloud and syncing across devices or only kept on this one.
+> If the cloud is unreachable (offline, misconfigured, no credentials yet), the
+> app automatically falls back to the server's local file mirror
+> (`data/subjects.json`, `data/study-cache.json`) and then to the browser's
+> localStorage, so you never lose work. A **server/cloud sync** badge in the
+> header shows whether data syncs across devices or is only kept on this one.
 
 ## Learn More
 
@@ -57,5 +56,5 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 ## Deploy on Vercel
 
 Deploy this app on Vercel so it runs somewhere with a stable network that can
-reach Supabase, and set the Supabase env vars listed above in the project
-settings.
+reach Upstash Redis, and set the `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN` env vars listed above in the project settings.

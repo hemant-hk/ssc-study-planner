@@ -3,24 +3,23 @@ import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import type { StudyPlan } from "@/lib/gemini";
-import { getServerSupabase, markReachable } from "@/lib/server-supabase";
+import { getServerRedis, markRedisReachable, markRedisUnreachable } from "@/lib/server-redis";
 
 // Server-side store for the study-plan cache. The browser talks to this route
-// instead of Supabase directly (which depended on anon-key + RLS config that
-// could block cross-device reads), so it uses the server secrets and reads and
-// writes always work across devices.
+// instead of Redis directly, so cross-device sync always works through the
+// server REST URL + token.
 //
 //   GET  /api/cache          -> { plans: { [videoId]: StudyPlan } }
 //   GET  /api/cache?key=vid  -> { plan: StudyPlan | null }
 //   POST /api/cache          -> body { key, data }  -> upsert (by key)
 //   DELETE /api/cache        -> body { key }        -> delete row
 //
-// Storage is tiered: Supabase (cloud) is the permanent source of truth, and a
-// local JSON file mirrors it when the cloud is unreachable or not configured.
-// That way the plans still sync across devices that share this server (e.g. the
-// daytona preview) even when supabase.co is blocked on the network.
-const TABLE = "study_cache";
-// Filesystem mirror (like data/subjects.json). Used when Supabase is
+// Storage is tiered: Upstash Redis (cloud) is the permanent source of truth,
+// and a local JSON file mirrors it when the cloud is unreachable or not
+// configured. That way the plans still sync across devices that share this
+// server (e.g. the daytona preview) even when Redis is blocked on the network.
+const CACHE_HASH = "study_cache";
+// Filesystem mirror (like data/subjects.json). Used when Redis is
 // unreachable/not configured so data isn't lost and still syncs server-side.
 const DATA_FILE = path.join(process.cwd(), "data", "study-cache.json");
 
@@ -29,13 +28,6 @@ function isNetworkError(err: unknown): boolean {
   return /fetch failed|failed to fetch|networkerror|network error|network request failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|load failed|could not resolve host/i.test(
     message
   );
-}
-
-// supabase-js surfaces network failures as an `error` object (message like
-// "fetch failed") on some paths instead of throwing — treat those as a cloud
-// outage so the local file mirror keeps serving.
-function isCloudError(error: { message?: string }): boolean {
-  return !!error && isNetworkError(error.message || "");
 }
 
 async function fileExists(): Promise<boolean> {
@@ -57,41 +49,42 @@ async function writeFileCache(plans: Record<string, StudyPlan>): Promise<void> {
   await writeFile(DATA_FILE, JSON.stringify(plans, null, 2));
 }
 
-// Cloud-first read; falls back to the local external-file mirror when Supabase
-// is not configured or unreachable. Returns { plans, cloud: boolean }.
+// Cloud-first read; falls back to the local file mirror when Redis is not
+// configured or unreachable. Returns { plans, cloud: boolean }.
 async function readPlans(): Promise<{ plans: Record<string, StudyPlan>; cloud: boolean }> {
-  const db = getServerSupabase();
-  if (!db) return { plans: await readFileCache(), cloud: false };
+  const redis = getServerRedis();
+  if (!redis) return { plans: await readFileCache(), cloud: false };
   try {
-    const { data, error } = await db.from(TABLE).select("key, data");
-    if (error) return { plans: await readFileCache(), cloud: false };
-    markReachable();
+    const all = await redis.hgetall(CACHE_HASH);
+    markRedisReachable();
     const plans: Record<string, StudyPlan> = {};
-    for (const row of data || []) {
+    for (const [rawKey, rawValue] of Object.entries(all || {})) {
       // Skip subject rows (key = "subject:<id>") — those belong to /api/subjects.
-      if (typeof row.key !== "string" || row.key.startsWith("subject:")) continue;
-      if (row.key) plans[row.key as string] = row.data as StudyPlan;
+      if (rawKey.startsWith("subject:")) continue;
+      try {
+        plans[rawKey] = JSON.parse(rawValue as string) as StudyPlan;
+      } catch {
+        // Corrupt entries are best-effort; skip them.
+      }
     }
     return { plans, cloud: true };
   } catch (err) {
+    markRedisUnreachable();
     if (isNetworkError(err)) return { plans: await readFileCache(), cloud: false };
     return { plans: await readFileCache(), cloud: false };
   }
 }
 
 async function readPlan(videoId: string): Promise<{ plan: StudyPlan | null; cloud: boolean }> {
-  const db = getServerSupabase();
-  if (!db) return { plan: (await readFileCache())[videoId] ?? null, cloud: false };
+  const redis = getServerRedis();
+  if (!redis) return { plan: (await readFileCache())[videoId] ?? null, cloud: false };
   try {
-    const { data, error } = await db
-      .from(TABLE)
-      .select("data")
-      .eq("key", videoId)
-      .maybeSingle();
-    if (error) return { plan: (await readFileCache())[videoId] ?? null, cloud: false };
-    markReachable();
-    return { plan: data ? (data.data as StudyPlan) : null, cloud: true };
+    const raw = await redis.hget(CACHE_HASH, videoId);
+    markRedisReachable();
+    if (!raw) return { plan: null, cloud: true };
+    return { plan: JSON.parse(raw as string) as StudyPlan, cloud: true };
   } catch (err) {
+    markRedisUnreachable();
     if (isNetworkError(err)) return { plan: (await readFileCache())[videoId] ?? null, cloud: false };
     return { plan: (await readFileCache())[videoId] ?? null, cloud: false };
   }
@@ -99,18 +92,19 @@ async function readPlan(videoId: string): Promise<{ plan: StudyPlan | null; clou
 
 export async function GET(request: NextRequest) {
   // Lightweight probe for the UI badge: reports WHICH store answered.
-  //   cloud -> plan cache served from Supabase cloud
+  //   cloud -> plan cache served from Upstash Redis cloud
   //   file  -> cloud unreachable/not configured, served from this server's file
   //   local -> nothing on this server, fall back to browser storage
   if (request.nextUrl.searchParams.get("probe") === "1") {
-    const db = getServerSupabase();
+    const redis = getServerRedis();
     let cloud = false;
-    if (db) {
+    if (redis) {
       try {
-        const { error } = await db.from(TABLE).select("key").limit(1);
-        cloud = !error;
-        if (cloud) markReachable();
+        await redis.hget(CACHE_HASH, "__probe__");
+        cloud = true;
+        markRedisReachable();
       } catch {
+        markRedisUnreachable();
         cloud = false;
       }
     }
@@ -122,6 +116,7 @@ export async function GET(request: NextRequest) {
     const { plan, cloud } = await readPlan(videoId);
     if (plan) return Response.json({ plan, store: cloud ? "cloud" : "file" });
     // No cloud copy and no file copy -> treat as absent, not as a failure.
+    if (cloud) return Response.json({ plan: null });
     return Response.json({ plan: null });
   }
   const { plans, cloud } = await readPlans();
@@ -146,19 +141,16 @@ export async function POST(request: NextRequest) {
       fileError = err instanceof Error ? err.message : "file write failed";
     }
 
-    const db = getServerSupabase();
-    if (db) {
+    const redis = getServerRedis();
+    if (redis) {
       try {
-        const { error } = await db
-          .from(TABLE)
-          .upsert({ key, data: body.data ?? {} }, { onConflict: "key" });
-        if (!error) return Response.json({ ok: true });
-        if (isCloudError(error)) {
-          // Cloud unreachable but local file mirror succeeded — fine.
-          return Response.json({ ok: true, store: "file" });
-        }
+        await redis.hset(CACHE_HASH, { [key]: JSON.stringify(body.data ?? {}) });
+        markRedisReachable();
+        return Response.json({ ok: true });
       } catch (err) {
+        markRedisUnreachable();
         if (isNetworkError(err)) {
+          // Cloud unreachable but local file mirror succeeded — fine.
           return Response.json({ ok: true, store: "file" });
         }
       }
@@ -167,9 +159,9 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: fileError || "Failed to save plan" }, { status: 500 });
   } catch (err) {
     if (isNetworkError(err)) {
-      return Response.json({ error: "SUPABASE_UNREACHABLE" }, { status: 503 });
+      return Response.json({ error: "REDIS_UNREACHABLE" }, { status: 503 });
     }
-    const message = err instanceof Error ? err.message : "Supabase error";
+    const message = err instanceof Error ? err.message : "Redis error";
     return Response.json({ error: message }, { status: 500 });
   }
 }
@@ -190,21 +182,23 @@ export async function DELETE(request: NextRequest) {
       // Best-effort file cleanup; at least the cloud delete below is exact.
     }
 
-    const db = getServerSupabase();
-    if (db) {
+    const redis = getServerRedis();
+    if (redis) {
       try {
-        const { error } = await db.from(TABLE).delete().eq("key", key);
-        if (!error) return Response.json({ ok: true });
+        await redis.hdel(CACHE_HASH, key);
+        markRedisReachable();
+        return Response.json({ ok: true });
       } catch {
+        markRedisUnreachable();
         // Cloud unreachable — the local file mirror deletion already handled it.
       }
     }
     return Response.json({ ok: true });
   } catch (err) {
     if (isNetworkError(err)) {
-      return Response.json({ error: "SUPABASE_UNREACHABLE" }, { status: 503 });
+      return Response.json({ error: "REDIS_UNREACHABLE" }, { status: 503 });
     }
-    const message = err instanceof Error ? err.message : "Supabase error";
+    const message = err instanceof Error ? err.message : "Redis error";
     return Response.json({ error: message }, { status: 500 });
   }
 }
