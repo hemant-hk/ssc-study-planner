@@ -23,6 +23,12 @@ function LoginForm() {
     e.preventDefault();
     setError("");
     setBusy(true);
+    // Guard against hung requests (e.g. the server restarting) instead of
+    // waiting forever on an unresponsive connection.
+    const timeout = setTimeout(() => {
+      setError("Request timed out — is the server running?");
+      setBusy(false);
+    }, 15000);
     try {
       const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
       const res = await fetch(endpoint, {
@@ -34,13 +40,14 @@ function LoginForm() {
             : { email, password }
         ),
       });
-      const data = await res.json();
+
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(data?.error || "Something went wrong. Try again.");
+        setError(data?.error || `Server error (${res.status}). Please try again.`);
         setBusy(false);
         return;
       }
-      const user = data.user;
+      const user = data?.user;
       if (user?.role === "admin") {
         localStorage.setItem("isAdmin", "true");
         localStorage.removeItem("adminToken");
@@ -51,8 +58,12 @@ function LoginForm() {
         router.replace(next || "/dashboard");
       }
     } catch {
-      setError("Network error — is the server running?");
+      // Only reached for a genuine transport failure (server unreachable),
+      // not for a server error response which is handled above.
+      setError("Could not reach the server. Please try again in a moment.");
       setBusy(false);
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
