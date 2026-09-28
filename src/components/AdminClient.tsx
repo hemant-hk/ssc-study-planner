@@ -59,6 +59,11 @@ const COLORS = [
   "bg-pink-500",
 ];
 
+function adminHeaders(): Record<string, string> {
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("adminToken") || "" : "";
+  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
+
 type SectionId = "overview" | "content" | "ai" | "notices" | "doubts";
 
 const SECTIONS: { id: SectionId; label: string }[] = [
@@ -72,7 +77,16 @@ const SECTIONS: { id: SectionId; label: string }[] = [
 const inputCls =
   "w-full bg-black border border-zinc-800 focus:border-white/40 rounded-lg px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-zinc-500";
 
-export default function AdminClient({ user }: { user: AdminUser }) {
+export default function AdminClient({ user }: { user?: AdminUser }) {
+  const profile: AdminUser = user || {
+    id: "admin",
+    name: "Professor",
+    email: "admin@studyplanner.app",
+    role: "admin",
+    targetExam: "SSC CGL 2026",
+    dailyGoal: 0,
+    createdAt: "",
+  };
   const [section, setSection] = useState<SectionId>("overview");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -145,14 +159,14 @@ export default function AdminClient({ user }: { user: AdminUser }) {
     };
     const res = await fetch("/api/subjects", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders(),
       body: JSON.stringify(subject),
     });
     setBusy(false);
     if (res.ok) {
       setSubjects((prev) => [...prev, subject]);
       setNewName("");
-    } else setError("Failed to add subject (needs admin session)");
+    } else setError("Failed to add subject (needs admin password)");
   }
 
   async function deleteSubject(id: string) {
@@ -160,7 +174,7 @@ export default function AdminClient({ user }: { user: AdminUser }) {
     setBusy(true);
     const res = await fetch("/api/subjects", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders(),
       body: JSON.stringify({ id }),
     });
     setBusy(false);
@@ -175,7 +189,7 @@ export default function AdminClient({ user }: { user: AdminUser }) {
     setSubjects((prev) => prev.map((s) => (s.id === id ? updated : s)));
     await fetch("/api/subjects", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders(),
       body: JSON.stringify(updated),
     });
   }
@@ -187,7 +201,7 @@ export default function AdminClient({ user }: { user: AdminUser }) {
     setSubjects((prev) => prev.map((s) => (s.id === subjectId ? updated : s)));
     await fetch("/api/subjects", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders(),
       body: JSON.stringify(updated),
     });
   }
@@ -225,7 +239,7 @@ export default function AdminClient({ user }: { user: AdminUser }) {
         setSubjects((prev) => prev.map((s) => (s.id === existing.id ? merged : s)));
         await fetch("/api/subjects", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: adminHeaders(),
           body: JSON.stringify(merged),
         });
       } else {
@@ -237,7 +251,7 @@ export default function AdminClient({ user }: { user: AdminUser }) {
         };
         await fetch("/api/subjects", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: adminHeaders(),
           body: JSON.stringify(created),
         });
         setSubjects((prev) => [...prev, created]);
@@ -273,7 +287,7 @@ export default function AdminClient({ user }: { user: AdminUser }) {
         setSubjects((prev) => prev.map((s) => (s.id === subjectId ? updated : s)));
         await fetch("/api/subjects", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: adminHeaders(),
           body: JSON.stringify(updated),
         });
       }
@@ -307,18 +321,18 @@ export default function AdminClient({ user }: { user: AdminUser }) {
     setBusy(true);
     const res = await fetch("/api/notices", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders(),
       body: JSON.stringify({ notices }),
     });
     setBusy(false);
     if (res.ok) setError("");
-    else setError("Failed to save notices (needs admin session)");
+    else setError("Failed to save notices (needs admin password)");
   }
 
   async function resolveDoubt(id: string) {
     const res = await fetch("/api/discussions", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders(),
       body: JSON.stringify({ id }),
     });
     if (res.ok) {
@@ -352,8 +366,7 @@ export default function AdminClient({ user }: { user: AdminUser }) {
     [subjects]
   );
 
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+  function handleLogout() {
     localStorage.removeItem("isAdmin");
     localStorage.removeItem("adminToken");
     window.location.href = "/";
@@ -365,10 +378,10 @@ export default function AdminClient({ user }: { user: AdminUser }) {
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <span className="w-9 h-9 rounded-full bg-white text-black text-sm font-bold flex items-center justify-center flex-shrink-0">
-              {user.role === "admin" ? "A" : user.name?.[0]?.toUpperCase() || "?"}
+              {profile.role === "admin" ? "A" : profile.name?.[0]?.toUpperCase() || "?"}
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-white leading-tight truncate">{user.name}</p>
+              <p className="text-sm font-semibold text-white leading-tight truncate">{profile.name}</p>
               <p className="text-[10px] text-zinc-400 leading-tight">Admin Panel</p>
             </div>
           </div>
