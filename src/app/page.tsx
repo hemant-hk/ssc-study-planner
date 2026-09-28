@@ -112,6 +112,7 @@ export default function Home() {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeChapter, setActiveChapter] = useState<number | null>(null);
+  const [activePredictedTopic, setActivePredictedTopic] = useState<number | null>(null);
   const [addingToSubject, setAddingToSubject] = useState<string | null>(null);
   const [playlistProgress, setPlaylistProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
@@ -1125,9 +1126,18 @@ export default function Home() {
                         {activeVideo.studyPlan.predictedTopics.map((topic, i) => {
                           const probClass = topic.probability === "High" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : topic.probability === "Medium" ? "bg-amber-500/10 border-amber-500/30 text-amber-300" : "bg-zinc-900 border-zinc-800 text-zinc-400";
                           return (
-                            <li key={i} title={`Why: ${topic.reason} · Tip: ${topic.preparationTip}`} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full border ${probClass}`}>{topic.probability}</span>
-                              <span className="text-sm font-medium text-zinc-200 flex-1 truncate">{topic.topic}</span>
+                            <li key={i} className="py-2 first:pt-0 last:pb-0">
+                              <div onClick={() => setActivePredictedTopic(activePredictedTopic === i ? null : i)} className="flex items-center gap-3 py-2.5 -my-1 cursor-pointer rounded-lg hover:bg-white/[0.03] transition-colors">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${probClass}`}>{topic.probability}</span>
+                                <span className="text-sm font-medium text-zinc-200 flex-1 truncate">{topic.topic}</span>
+                                <svg className={`w-4 h-4 text-zinc-500 transition-transform ${activePredictedTopic === i ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                              </div>
+                              {activePredictedTopic === i && (
+                                <div className="ml-[52px] mt-1 mb-2 space-y-2">
+                                  <div className="text-xs text-zinc-300"><span className="text-zinc-500 font-medium">Why:</span> {topic.reason}</div>
+                                  <div className="text-xs text-zinc-300"><span className="text-zinc-500 font-medium">Preparation tip:</span> {topic.preparationTip}</div>
+                                </div>
+                              )}
                             </li>
                           );
                         })}
