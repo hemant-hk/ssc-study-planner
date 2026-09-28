@@ -6,7 +6,7 @@ import {
   fetchPlaylistInfo,
 } from "@/lib/youtube";
 import type { YouTubeVideoInfo } from "@/lib/youtube";
-import { generateStudyPlan, generateQuiz, generateFullNotes, AIProviderError, type StudyPlan } from "@/lib/gemini";
+import { generateStudyPlan, generateQuiz, generateFullNotes, generateTopicDetail, AIProviderError, type StudyPlan } from "@/lib/gemini";
 
 // No server-side filesystem access here. Serverless runtimes (Vercel) mount
 // the filesystem read-only, so writing e.g. data/study-plans.json would throw
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       style,
       videoInfo: cachedVideoInfo,
       plan: cachedPlan,
+      topic,
     } = await request.json();
 
     if (!url || typeof url !== "string") {
@@ -70,6 +71,19 @@ export async function POST(request: NextRequest) {
       }
       const base = existing || (await generateStudyPlan(videoInfo));
       const merged: StudyPlan = { ...base, quiz: await generateQuiz(videoInfo, base) };
+      return Response.json({ type: "video", videoInfo, studyPlan: merged });
+    }
+
+    if (style === "topic-detail") {
+      const existing = cachedPlan as StudyPlan | undefined;
+      const base = existing || (await generateStudyPlan(videoInfo));
+      const detail = await generateTopicDetail(videoInfo, topic, base);
+      const merged: StudyPlan = {
+        ...base,
+        predictedTopics: base.predictedTopics.map((p) =>
+          p.topic === topic ? { ...p, detail } : p
+        ),
+      };
       return Response.json({ type: "video", videoInfo, studyPlan: merged });
     }
 
