@@ -125,10 +125,6 @@ export default function Home() {
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizFilter, setQuizFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
   const [isAdmin, setIsAdmin] = useState(false);
-  // Session-based identity (from the httpOnly sp_session cookie) for the header
-  // avatar dropdown. Falls back to the legacy localStorage isAdmin for guests.
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [loginPassword, setLoginPassword] = useState("");
@@ -211,23 +207,6 @@ export default function Home() {
 
     const adminStatus = localStorage.getItem("isAdmin");
     if (adminStatus === "true") setIsAdmin(true);
-
-    // Session identity (cookie-based). If a logged-in user is present, prefer
-    // their role over the legacy isAdmin flag; admins keep adminToken removed
-    // so content APIs use the cookie path.
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: { user?: { name?: string; email?: string; role?: string } } | null) => {
-        const u = body?.user;
-        if (u?.role) {
-          setCurrentUser({ name: u.name || "", email: u.email || "", role: u.role });
-          const isAdm = u.role === "admin";
-          setIsAdmin(isAdm);
-          localStorage.setItem("isAdmin", isAdm ? "true" : "false");
-          if (isAdm) localStorage.removeItem("adminToken");
-        }
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -320,12 +299,8 @@ export default function Home() {
   }
 
   function handleLogout() {
-    // Revoke the server session (if any) and clear both the new cookie-based
-    // identity and the legacy localStorage admin flag.
-    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-    setCurrentUser(null);
+    // Clear the legacy localStorage admin flag and token.
     setIsAdmin(false);
-    setShowUserMenu(false);
     localStorage.removeItem("isAdmin");
     localStorage.removeItem("adminToken");
   }
@@ -701,53 +676,11 @@ export default function Home() {
                 {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
               </span>
             </div>
-            {currentUser ? (
+            {isAdmin ? (
               <div className="relative flex items-center gap-2">
-                {currentUser.role === "admin" && (
-                  <a href="/admin" className="text-xs bg-white text-black px-3 py-1.5 rounded-lg font-medium hover:bg-zinc-200 transition-colors">
-                    Admin Panel
-                  </a>
-                )}
-                <button onClick={() => setShowUserMenu((v) => !v)} className="flex items-center gap-2 p-1 rounded-full hover:bg-white/5 transition-colors" title={currentUser.name}>
-                  <span className={`w-8 h-8 rounded-full ${currentUser.role === "admin" ? "bg-white text-black" : "bg-white/10 text-white border border-white/10"} text-xs font-medium flex items-center justify-center`}>
-                    {currentUser.name?.[0]?.toUpperCase() || (currentUser.role === "admin" ? "A" : "U")}
-                  </span>
-                </button>
-                {showUserMenu && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-                    <div className="absolute right-0 top-full mt-2 z-50 w-56 bg-[#0a0a0c] border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
-                      <div className="px-4 py-3 border-b border-zinc-800">
-                        <p className="text-sm font-semibold text-white truncate">{currentUser.name}</p>
-                        <p className="text-[11px] text-zinc-500 truncate">{currentUser.email}</p>
-                      </div>
-                      <div className="py-1">
-                        <a href="/dashboard" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
-                          My Dashboard
-                        </a>
-                        <a href="/notes" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
-                          Saved Notes
-                        </a>
-                        {currentUser.role === "admin" && (
-                          <>
-                            <a href="/admin" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
-                              Admin Panel
-                            </a>
-                            <button onClick={() => { setShowUserMenu(false); setShowChangePassword(true); setChangePasswordError(""); setChangePasswordSuccess(""); }} className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
-                              Change Password
-                            </button>
-                          </>
-                        )}
-                        <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-950/30 transition-colors">
-                          Logout
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : isAdmin ? (
-              <div className="relative flex items-center gap-2">
+                <a href="/admin" className="text-xs bg-white text-black px-3 py-1.5 rounded-lg font-medium hover:bg-zinc-200 transition-colors">
+                  Admin Panel
+                </a>
                 <span className="w-8 h-8 rounded-full bg-white/10 text-white text-xs font-medium flex items-center justify-center border border-white/10" title="Admin">
                   A
                 </span>
@@ -755,19 +688,11 @@ export default function Home() {
                 <button onClick={handleLogout} className="text-xs text-zinc-400 hover:text-white transition-colors">Logout</button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <a href="/login" className="text-sm px-4 py-2 rounded-lg bg-zinc-900 text-zinc-300 border border-white/10 hover:bg-zinc-800 transition-colors">
-                  Login
-                </a>
-                <a href="/login?mode=signup" className="text-sm px-4 py-2 rounded-lg bg-white text-black font-medium hover:bg-zinc-200 transition-colors">
-                  Sign Up
-                </a>
-                <button onClick={() => setShowLogin(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors" title="Admin login" aria-label="Admin login">
-                  <svg className="w-6 h-6 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </button>
-              </div>
+              <button onClick={() => setShowLogin(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors" title="Admin login" aria-label="Admin login">
+                <svg className="w-6 h-6 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </button>
             )}
           </div>
         </div>

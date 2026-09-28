@@ -101,7 +101,18 @@ function computeStreak(days: { date: string; tasks: { done: boolean }[]; closed:
 
 type Tab = "notes" | "pyqs" | "doubts" | "quizzes";
 
-export default function DashboardClient({ user }: { user: DashUser }) {
+const GUEST_USER: DashUser = {
+  id: "guest",
+  name: "Guest Student",
+  email: "",
+  role: "student",
+  targetExam: "",
+  dailyGoal: 0,
+  createdAt: "",
+};
+
+export default function DashboardClient({ user }: { user?: DashUser }) {
+  const profile = user || GUEST_USER;
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [doubts, setDoubts] = useState<Doubt[]>([]);
@@ -111,7 +122,10 @@ export default function DashboardClient({ user }: { user: DashUser }) {
   const [roster, setRoster] = useState<{ date: string; tasks: { done: boolean }[]; closed: boolean }[]>([]);
   const [tab, setTab] = useState<Tab>("notes");
   const [editingGoal, setEditingGoal] = useState(false);
-  const [dailyGoal, setDailyGoal] = useState(String(user.dailyGoal || 0));
+  const [dailyGoal, setDailyGoal] = useState(() => {
+    if (typeof window === "undefined") return String(profile.dailyGoal || 0);
+    return localStorage.getItem("yt-study-daily-goal") || String(profile.dailyGoal || 0);
+  });
   const [savedMsg, setSavedMsg] = useState("");
 
   useEffect(() => {
@@ -167,20 +181,13 @@ export default function DashboardClient({ user }: { user: DashUser }) {
   async function saveGoal() {
     const v = Number(dailyGoal);
     if (!Number.isFinite(v) || v < 0) return;
-    const res = await fetch("/api/auth/me", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dailyGoal: Math.round(v) }),
-    });
-    if (res.ok) {
-      setEditingGoal(false);
-      setSavedMsg("Daily goal updated ✓");
-      setTimeout(() => setSavedMsg(""), 2000);
-    }
+    localStorage.setItem("yt-study-daily-goal", String(Math.round(v)));
+    setEditingGoal(false);
+    setSavedMsg("Daily goal updated ✓");
+    setTimeout(() => setSavedMsg(""), 2000);
   }
 
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+  function handleLogout() {
     localStorage.removeItem("isAdmin");
     localStorage.removeItem("adminToken");
     window.location.href = "/";
@@ -214,22 +221,22 @@ export default function DashboardClient({ user }: { user: DashUser }) {
         <section className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-5 md:p-6 mb-6">
           <div className="flex flex-wrap items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-white text-black text-lg font-bold flex items-center justify-center flex-shrink-0">
-              {initials(user.name || user.email)}
+              {initials(profile.name || profile.email)}
             </div>
             <div className="flex-1 min-w-[160px]">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg font-bold text-white">{user.name}</h1>
+                <h1 className="text-lg font-bold text-white">{profile.name}</h1>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide ${
-                  user.role === "admin"
+                  profile.role === "admin"
                     ? "bg-white text-black"
                     : "bg-zinc-900 border border-zinc-700 text-zinc-300"
                 }`}>
-                  {user.role}
+                  {profile.role}
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 mt-0.5">{user.email}</p>
+              <p className="text-xs text-zinc-400 mt-0.5">{profile.email}</p>
               <p className="text-xs text-zinc-300 mt-1.5">
-                Target: <span className="text-white font-medium">{user.targetExam || "Not set"}</span>
+                Target: <span className="text-white font-medium">{profile.targetExam || "Not set"}</span>
               </p>
             </div>
             <div className="flex flex-col items-end gap-1.5">
@@ -247,11 +254,11 @@ export default function DashboardClient({ user }: { user: DashUser }) {
                 </div>
               ) : (
                 <button
-                  onClick={() => { setEditingGoal(true); setDailyGoal(String(user.dailyGoal)); setSavedMsg(""); }}
+                  onClick={() => { setEditingGoal(true); setDailyGoal(String(profile.dailyGoal)); setSavedMsg(""); }}
                   className="text-sm text-white font-semibold hover:underline"
                   title="Edit daily goal"
                 >
-                  {user.dailyGoal > 0 ? `${user.dailyGoal} min` : "Let’s set one"}
+                  {profile.dailyGoal > 0 ? `${profile.dailyGoal} min` : "Let’s set one"}
                 </button>
               )}
               {savedMsg && <p className="text-[11px] text-emerald-400">{savedMsg}</p>}
