@@ -3,7 +3,7 @@ import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import type { StudyPlan } from "@/lib/gemini";
-import { getServerRedis, markRedisReachable, markRedisUnreachable } from "@/lib/server-redis";
+import { getServerRedis, markRedisReachable, markRedisUnreachable, hgetallToRecord } from "@/lib/server-redis";
 
 // Server-side store for the study-plan cache. The browser talks to this route
 // instead of Redis directly, so cross-device sync always works through the
@@ -58,7 +58,7 @@ async function readPlans(): Promise<{ plans: Record<string, StudyPlan>; cloud: b
     const all = await redis.hgetall(CACHE_HASH);
     markRedisReachable();
     const plans: Record<string, StudyPlan> = {};
-    for (const [rawKey, rawValue] of Object.entries(all || {})) {
+    for (const [rawKey, rawValue] of Object.entries(hgetallToRecord(all))) {
       // Skip subject rows (key = "subject:<id>") — those belong to /api/subjects.
       if (rawKey.startsWith("subject:")) continue;
       try {
