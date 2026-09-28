@@ -42,13 +42,23 @@ export function extractPlaylistId(url: string): string | null {
   return match ? match[1] : null;
 }
 
+// A real YouTube Data API key is 39 chars starting with "AIza". Anything else
+// (unset, "your_...", or a placeholder) means "no key" → always scrape.
+function hasUsableApiKey(): boolean {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  return !!apiKey && apiKey.startsWith("AIza") && apiKey.length >= 20;
+}
+
 export async function fetchPlaylistInfo(playlistId: string): Promise<PlaylistInfo> {
   const apiKey = process.env.YOUTUBE_API_KEY;
-
-  if (apiKey && apiKey !== "your_youtube_api_key_here") {
-    return fetchPlaylistWithApi(playlistId, apiKey);
+  if (hasUsableApiKey()) {
+    try {
+      return await fetchPlaylistWithApi(playlistId, apiKey as string);
+    } catch {
+      // API failed (quota / invalid key / revoked secret). Fall back to
+      // scraping so adding a broken key never breaks playlist imports.
+    }
   }
-
   return fetchPlaylistScraping(playlistId);
 }
 
