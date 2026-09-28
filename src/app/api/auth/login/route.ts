@@ -12,8 +12,6 @@ export const runtime = "nodejs";
 // POST /api/auth/login { email, password } -> sets an httpOnly session cookie
 // and returns the signed-in user (without the password hash).
 export async function POST(request: NextRequest) {
-  await seedAuth();
-
   let body: { email?: unknown; password?: unknown } = {};
   try {
     body = await request.json();
@@ -28,22 +26,32 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Email and password are required" }, { status: 400 });
   }
 
-  const user = await verifyCredentials(email, password);
-  if (!user) {
-    return Response.json({ error: "Invalid email or password" }, { status: 401 });
+  // Credential verification and session creation depend on the local auth
+  // store (fs) and WebCrypto. If either is unreachable or throws, report a
+  // clean 401 instead of crashing the route with a 500.
+  try {
+    await seedAuth();
+
+    const user = await verifyCredentials(email, password);
+    if (!user) {
+      return Response.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    const token = await createSession(user);
+
+    const res = new Response(JSON.stringify({ user: toSafeUser(user) }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+    res.headers.append(
+      "Set-Cookie",
+      `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${
+        process.env.NODE_ENV === "production" ? "; Secure" : ""
+      }`
+    );
+    return res;
+  } catch (err) {
+    console.error("POST /api/auth/login failed:", err);
+    return Response.json({ error: "Invalid credentials" }, { status: 401 });
   }
-
-  const token = await createSession(user);
-
-  const res = new Response(JSON.stringify({ user: toSafeUser(user) }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
-  res.headers.append(
-    "Set-Cookie",
-    `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${
-      process.env.NODE_ENV === "production" ? "; Secure" : ""
-    }`
-  );
-  return res;
 }
