@@ -1148,7 +1148,7 @@ export default function Home() {
                               <NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={`${note.topic}: ${note.notes}`} title="Save note" />
                             </div>
                             <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">{note.notes}</p>
-                            <div className="flex flex-wrap gap-1 mt-1.5">{note.exams.map((exam, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">{exam}</span>)}</div>
+                            <div className="flex flex-wrap gap-1 mt-1.5">{(note.exams || []).map((exam, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">{exam}</span>)}</div>
                           </li>
                         ))}
                       </ul>
@@ -1210,7 +1210,7 @@ export default function Home() {
                       </div>
                       {activeChapter === i && (
                         <div className="mt-3 ml-10">
-                          <div className="flex flex-wrap gap-1 mb-2">{ch.keyConcepts.map((c, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-1.5 py-0.5 rounded">{c}</span>)}</div>
+                          <div className="flex flex-wrap gap-1 mb-2">{(ch.keyConcepts || []).map((c, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-1.5 py-0.5 rounded">{c}</span>)}</div>
                           <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">{ch.notes}</p>
                         </div>
                       )}
@@ -1269,11 +1269,11 @@ export default function Home() {
                               topic={videoMeta?.topic || activeVideo.title}
                               videoId={activeVideo.videoId}
                               contentType="quiz"
-                              content={`Q. ${q.question}\n${q.options.map((o, j) => `${String.fromCharCode(65 + j)}) ${o}`).join("\n")}\nCorrect Answer: ${String.fromCharCode(65 + q.correctAnswer)}. ${q.options[q.correctAnswer]}${q.explanation ? `\nExplanation: ${q.explanation}` : ""}`}
+                              content={`Q. ${q.question}\n${(q.options || []).map((o, j) => `${String.fromCharCode(65 + j)}) ${o}`).join("\n")}\nCorrect Answer: ${String.fromCharCode(65 + q.correctAnswer)}. ${q.options?.[q.correctAnswer] || ""}${q.explanation ? `\nExplanation: ${q.explanation}` : ""}`}
                             />
                           </div>
                           <div className="ml-9 space-y-2">
-                            {q.options.map((opt, j) => {
+                            { (q.options || []).map((opt, j) => {
                               const isSelected = selected === j;
                               let optClass = "border-white/10 hover:border-white/20";
                               if (quizSubmitted && j === q.correctAnswer) optClass = "border-white/40 bg-white/10";

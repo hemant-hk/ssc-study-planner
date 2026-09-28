@@ -513,14 +513,44 @@ Be thorough and specific with real numbers, dates, names and examples. Respond a
 function normalizePlan(data: Record<string, any>): StudyPlan {
   return {
     summary: data.summary || "",
-    keyTopics: data.keyTopics || [],
-    chapters: data.chapters || [],
-    revisionPoints: data.revisionPoints || [],
+    keyTopics: Array.isArray(data.keyTopics) ? data.keyTopics : [],
+    chapters: Array.isArray(data.chapters)
+      ? data.chapters.map((ch: Record<string, any>) => ({
+          title: ch.title || "",
+          timestamp: ch.timestamp || "0:00",
+          keyConcepts: Array.isArray(ch.keyConcepts) ? ch.keyConcepts : [],
+          notes: ch.notes || "",
+        }))
+      : [],
+    revisionPoints: Array.isArray(data.revisionPoints) ? data.revisionPoints : [],
     difficulty: data.difficulty || "Intermediate",
     estimatedStudyTime: data.estimatedStudyTime || "1 hour",
-    quiz: data.quiz || [],
-    lastYearNotes: data.lastYearNotes || [],
-    predictedTopics: data.predictedTopics || [],
+    quiz: Array.isArray(data.quiz)
+      ? data.quiz.map((q: Record<string, any>) => ({
+          question: q.question || "",
+          options: Array.isArray(q.options) ? q.options : [],
+          correctAnswer: q.correctAnswer || 0,
+          explanation: q.explanation || "",
+          difficulty: q.difficulty || "medium",
+        }))
+      : [],
+    lastYearNotes: Array.isArray(data.lastYearNotes)
+      ? data.lastYearNotes.map((n: Record<string, any>) => ({
+          topic: n.topic || "",
+          frequency: n.frequency || "",
+          notes: n.notes || "",
+          exams: Array.isArray(n.exams) ? n.exams : [],
+        }))
+      : [],
+    predictedTopics: Array.isArray(data.predictedTopics)
+      ? data.predictedTopics.map((p: Record<string, any>) => ({
+          topic: p.topic || "",
+          probability: p.probability || "Medium",
+          reason: p.reason || "",
+          preparationTip: p.preparationTip || "",
+          detail: p.detail || undefined,
+        }))
+      : [],
     fullNotes: data.fullNotes || "",
   };
 }
