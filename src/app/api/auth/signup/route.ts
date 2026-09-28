@@ -28,29 +28,40 @@ export async function POST(request: NextRequest) {
   const targetExam = typeof body.targetExam === "string" ? body.targetExam : "";
   const dailyGoalRaw = typeof body.dailyGoal === "string" ? body.dailyGoal : "";
 
-  const result = await createUser({
-    name,
-    email,
-    password,
-    targetExam,
-    dailyGoal: dailyGoalRaw ? Number(dailyGoalRaw) : undefined,
-  });
-  if (!result) {
+  // Account creation and session creation depend on the local auth store
+  // (fs) and WebCrypto. If either is unreachable or throws, report a clean
+  // 400 instead of crashing the route with a 500.
+  try {
+    const result = await createUser({
+      name,
+      email,
+      password,
+      targetExam,
+      dailyGoal: dailyGoalRaw ? Number(dailyGoalRaw) : undefined,
+    });
+    if (!result) {
+      return Response.json(
+        { error: "Could not create account (bad email, short password, or email already in use)" },
+        { status: 400 }
+      );
+    }
+
+    const token = await createSession(result);
+    const store = await cookies();
+    store.set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    });
+
+    return Response.json({ user: toSafeUser(result) }, { status: 201 });
+  } catch (err) {
+    console.error("POST /api/auth/signup failed:", err);
     return Response.json(
       { error: "Could not create account (bad email, short password, or email already in use)" },
       { status: 400 }
     );
   }
-
-  const token = await createSession(result);
-  const store = await cookies();
-  store.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
-
-  return Response.json({ user: toSafeUser(result) }, { status: 201 });
 }
