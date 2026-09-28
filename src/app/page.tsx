@@ -92,18 +92,9 @@ const DAILY_QUOTES = [
 ];
 
 export default function Home() {
-  // Hydrate synchronously from the localStorage cache so the sidebar subjects
-  // render instantly on first click; the /api/subjects fetch refines in
-  // background (this is critical when the cloud is slow/unreachable).
-  const [subjects, setSubjects] = useState<Subject[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const saved = localStorage.getItem("yt-study-subjects");
-      return saved ? (JSON.parse(saved) as Subject[]) : [];
-    } catch {
-      return [];
-    }
-  });
+  // SSR and first client render start empty so hydration never mismatches.
+  // localStorage + /api/subjects data are loaded in a mount effect below.
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [showNewSubject, setShowNewSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
@@ -140,22 +131,8 @@ export default function Home() {
   const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [videoFilter, setVideoFilter] = useState<"all" | "pending" | "completed">("all");
-  const [completedVideos, setCompletedVideos] = useState<Record<string, boolean>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      return JSON.parse(localStorage.getItem("yt-study-done") || "{}");
-    } catch {
-      return {};
-    }
-  });
-  const [revCheck, setRevCheck] = useState<Record<string, number[]>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      return JSON.parse(localStorage.getItem("yt-study-revision") || "{}");
-    } catch {
-      return {};
-    }
-  });
+  const [completedVideos, setCompletedVideos] = useState<Record<string, boolean>>({});
+  const [revCheck, setRevCheck] = useState<Record<string, number[]>>({});
   // "checking" | "cloud" | "file" | "off" — which storage syncs your data across
   // devices. cloud = Supabase reachable, file = this server's own store,
   // off = only this browser (neither cloud nor server store available).
@@ -187,6 +164,31 @@ export default function Home() {
         setSyncStatus(store === "cloud" ? "cloud" : store === "file" ? "file" : "off");
       })
       .catch(() => setSyncStatus("off"));
+
+    // Hydrate instantly from the localStorage cache so the sidebar renders
+    // before the network round-trip; /api/subjects then refines with fresh data.
+    try {
+      const saved = localStorage.getItem("yt-study-subjects");
+      if (saved) {
+        const cached = JSON.parse(saved) as Subject[];
+        if (Array.isArray(cached)) setSubjects(cached);
+      }
+    } catch {
+      // corrupted cache — fall through to the fetch below
+    }
+
+    try {
+      const saved = localStorage.getItem("yt-study-done");
+      if (saved) setCompletedVideos(JSON.parse(saved));
+    } catch {
+      // ignore corrupted revision cache
+    }
+    try {
+      const saved = localStorage.getItem("yt-study-revision");
+      if (saved) setRevCheck(JSON.parse(saved));
+    } catch {
+      // ignore corrupted completion cache
+    }
 
     fetch("/api/subjects")
       .then((res) => res.json())
@@ -264,18 +266,23 @@ export default function Home() {
     }
   }, [subjects, activeVideoId]);
 
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
 
+  useEffect(() => setMounted(true), []);
   useEffect(() => {
+    setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const timeString = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-  const dateString = now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / 86_400_000);
-  const dailyQuote = DAILY_QUOTES[dayOfYear % DAILY_QUOTES.length];
+  // Only resolve clock strings after mount: SSR would render a different time
+  // than the client's first hydration paint, which breaks React hydration.
+  const timeString = mounted && now ? now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—:—:—";
+  const dateString = mounted && now ? now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+  const startOfYear = mounted && now ? new Date(now.getFullYear(), 0, 1) : new Date(0, 0, 1);
+  const dayOfYear = mounted && now ? Math.floor((now.getTime() - startOfYear.getTime()) / 86_400_000) : 0;
+  const dailyQuote = DAILY_QUOTES[mounted ? dayOfYear % DAILY_QUOTES.length : 0];
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
