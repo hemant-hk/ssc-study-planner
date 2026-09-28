@@ -3,7 +3,7 @@ import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import type { StudyPlan } from "@/lib/gemini";
-import { getServerSupabase } from "@/lib/server-supabase";
+import { getServerSupabase, markReachable } from "@/lib/server-supabase";
 
 // Server-side store for the study-plan cache. The browser talks to this route
 // instead of Supabase directly (which depended on anon-key + RLS config that
@@ -65,6 +65,7 @@ async function readPlans(): Promise<{ plans: Record<string, StudyPlan>; cloud: b
   try {
     const { data, error } = await db.from(TABLE).select("key, data");
     if (error) return { plans: await readFileCache(), cloud: false };
+    markReachable();
     const plans: Record<string, StudyPlan> = {};
     for (const row of data || []) {
       // Skip subject rows (key = "subject:<id>") — those belong to /api/subjects.
@@ -88,6 +89,7 @@ async function readPlan(videoId: string): Promise<{ plan: StudyPlan | null; clou
       .eq("key", videoId)
       .maybeSingle();
     if (error) return { plan: (await readFileCache())[videoId] ?? null, cloud: false };
+    markReachable();
     return { plan: data ? (data.data as StudyPlan) : null, cloud: true };
   } catch (err) {
     if (isNetworkError(err)) return { plan: (await readFileCache())[videoId] ?? null, cloud: false };
@@ -107,6 +109,7 @@ export async function GET(request: NextRequest) {
       try {
         const { error } = await db.from(TABLE).select("key").limit(1);
         cloud = !error;
+        if (cloud) markReachable();
       } catch {
         cloud = false;
       }
