@@ -34,6 +34,15 @@ and sync across devices. It needs two environment variables configured **once**:
    - `UPSTASH_REDIS_REST_TOKEN` — the `UPSTASH_REDIS_REST_TOKEN` value from the
      same tab (a long `eyJ...` bearer token).
 
+Other environment variables (see `.env.local.example`):
+
+- `GEMINI_API_KEY` — Google Gemini key used for study-plan generation.
+- `GROQ_API_KEY` — Groq key; the fast primary AI provider (falls back to Gemini).
+- `ADMIN_PASSWORD` — fallback admin password (overridden by
+  `data/admin-password.json` once set from the UI).
+- `YOUTUBE_API_KEY` — *optional*; a real YouTube Data API key starts with
+  `AIza`. If missing the app scrapes public YouTube metadata instead.
+
 No table schema is needed: subjects live in a Redis hash `subjects` (one field
 `subject:<id>` per subject, plus a `subject:__seeded__` marker) and study plans
 live in the Redis hash `study_cache` (one field per videoId).
