@@ -36,3 +36,24 @@ export function markRedisReachable(): void {
 export function markRedisUnreachable(): void {
   cooldownUntil = Date.now() + CLOUD_COOLDOWN_MS;
 }
+
+// With automaticDeserialization disabled, hgetall returns a FLAT array of
+// alternating field/value strings ([f1, v1, f2, v2, ...]) rather than an
+// object. Normalize either shape into a Record for the callers.
+export function hgetallToRecord(all: unknown): Record<string, string> {
+  const record: Record<string, string> = {};
+  if (Array.isArray(all)) {
+    for (let i = 0; i + 1 < all.length; i += 2) {
+      const key = all[i];
+      const value = all[i + 1];
+      if (typeof key === "string") record[key] = typeof value === "string" ? value : String(value ?? "");
+    }
+    return record;
+  }
+  if (all && typeof all === "object") {
+    for (const [key, value] of Object.entries(all as Record<string, unknown>)) {
+      if (typeof key === "string") record[key] = typeof value === "string" ? value : String(value ?? "");
+    }
+  }
+  return record;
+}

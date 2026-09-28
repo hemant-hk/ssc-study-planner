@@ -3,7 +3,7 @@ import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { isAdminRequest } from "@/lib/auth-store";
-import { getServerRedis, markRedisReachable, markRedisUnreachable } from "@/lib/server-redis";
+import { getServerRedis, markRedisReachable, markRedisUnreachable, hgetallToRecord } from "@/lib/server-redis";
 
 // Subjects (and the study plans embedded in their videos) are stored in the
 // cloud via Upstash Redis so they survive refreshes and sync across devices.
@@ -60,7 +60,7 @@ async function readCloudSubjects(): Promise<{ reachable: boolean; subjects: Subj
     const all = await redis.hgetall(SUBJECTS_HASH);
     markRedisReachable();
     const subjects: Subject[] = [];
-    for (const [rawKey, rawValue] of Object.entries(all || {})) {
+    for (const [rawKey, rawValue] of Object.entries(hgetallToRecord(all))) {
       if (!rawKey.startsWith(KEY_PREFIX) || rawKey === SEED_MARKER) continue;
       try {
         const s = JSON.parse(rawValue as string) as Subject;
