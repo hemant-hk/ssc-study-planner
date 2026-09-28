@@ -110,3 +110,31 @@ export async function PATCH(request: NextRequest) {
 
   return Response.json({ comment });
 }
+
+// DELETE /api/discussions { id } — admins resolve a doubt by removing it.
+export async function DELETE(request: NextRequest) {
+  const { isAdminRequest } = await import("@/lib/auth-store");
+  const authed = await isAdminRequest(request);
+  if (!authed) {
+    return Response.json({ error: "Admin access required" }, { status: 403 });
+  }
+
+  let body: { id?: unknown } = {};
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const id = typeof body.id === "string" ? body.id : "";
+  if (!id) {
+    return Response.json({ error: "id is required" }, { status: 400 });
+  }
+
+  const comments = await readDiscussions();
+  const next = comments.filter((c) => c.id !== id);
+  if (next.length === comments.length) {
+    return Response.json({ error: "Comment not found" }, { status: 404 });
+  }
+  await writeDiscussions(next);
+  return Response.json({ ok: true });
+}

@@ -1,12 +1,15 @@
 import Link from "next/link";
-import { SSC_NOTICES, getDaysLeft } from "@/lib/ssc-notices";
+import { getDaysLeft } from "@/lib/ssc-notices";
+import { loadNotices } from "@/lib/notices-store";
 
 export const dynamic = "force-dynamic";
 
-export default function NoticePage() {
+export default async function NoticePage() {
+  const SSC_NOTICES = await loadNotices();
   const todayLabel = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
   const chsl = SSC_NOTICES.find((n) => n.exam.includes("CHSL"));
-  const chslDays = chsl ? getDaysLeft("7 October 2026") : -1;
+  const chslDate = chsl?.dates.find((d) => d.important)?.value ?? "7 October 2026";
+  const chslDays = chsl ? getDaysLeft(chslDate) : -1;
 
   return (
     <div className="min-h-screen bg-black p-4 md:p-8">

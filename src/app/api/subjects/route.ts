@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
-import { isAdminBearer } from "@/lib/admin-password";
-import { getServerSupabase } from "@/lib/server-supabase";
+import { isAdminRequest } from "@/lib/auth-store";
+import { getServerSupabase, markReachable } from "@/lib/server-supabase";
 
 // Subjects (and the study plans embedded in their videos) are stored in the
 // cloud via Supabase so they survive refreshes and sync across devices. The
@@ -54,6 +54,7 @@ async function readCloudSubjects(): Promise<{ reachable: boolean; subjects: Subj
   try {
     const { data, error } = await db.from(TABLE).select("key, data");
     if (error || !data) return { reachable: false, subjects: [] };
+    markReachable();
     const rows = data.filter((r) => typeof r.key === "string" && r.key.startsWith(KEY_PREFIX));
     const subjects = rows
       .map((r) => r.data as Subject)
@@ -133,7 +134,7 @@ async function persistSubjects(subjects: Subject[]): Promise<void> {
 }
 
 function isAdmin(request: NextRequest): Promise<boolean> {
-  return isAdminBearer(request.headers.get("authorization"));
+  return isAdminRequest(request);
 }
 
 export async function GET() {
