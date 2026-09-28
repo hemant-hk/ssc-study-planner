@@ -1,10 +1,10 @@
 import type { StudyPlan } from "./gemini";
 
-// Study plans are cached in the Supabase `study_cache` table so they sync
+// Study plans are cached in Upstash Redis (via /api/cache) so they sync
 // across devices. The browser talks to it through the server-side proxy at
-// /api/cache (which uses the server Supabase secrets) instead of connecting to
-// Supabase directly — that avoids anon-key/RLS config that can silently block
-// cross-device reads.
+// /api/cache (which uses the server Redis URL + token) instead of connecting
+// to the store directly — that avoids exposing cloud credentials or secrets in
+// the browser bundle.
 //
 // localStorage is used ONLY as an offline / ISP-blocked fallback: if the app
 // is genuinely offline (DNS failure, no network), reads fall back to the
@@ -12,7 +12,7 @@ import type { StudyPlan } from "./gemini";
 const LS_PREFIX = "studycache:";
 
 // True when the device is truly offline (DNS resolution, ISP block, connection
-// reset). Supabase-js / fetch surface these as thrown fetch errors.
+// reset). fetch surfaces these as thrown fetch errors.
 function isNetworkError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION|fetch failed|failed to fetch|networkerror|network error|network request failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|load failed/i.test(
@@ -69,7 +69,7 @@ function lsWrite(videoId: string, plan: StudyPlan): void {
   try {
     window.localStorage.setItem(lsKey(videoId), JSON.stringify(plan));
   } catch {
-    // localStorage quota/security errors are best-effort; Supabase is primary.
+    // localStorage quota/security errors are best-effort; the server store is primary.
   }
 }
 
@@ -115,9 +115,9 @@ export async function getCachedPlan(videoId: string): Promise<StudyPlan | null> 
 }
 
 export async function setCachedPlan(videoId: string, plan: StudyPlan): Promise<void> {
-  // Supabase (via /api/cache) is the source of truth for cross-device sync.
+  // The server store (via /api/cache) is the source of truth for cross-device sync.
   // ALWAYS keep a local copy as a fallback: if the cloud write fails for any
-  // reason (offline, Supabase not configured, table missing, RLS), the plan
+  // reason (offline, cloud not configured, unreachable), the plan
   // still survives on this device instead of being lost forever.
   lsWrite(videoId, plan);
   try {

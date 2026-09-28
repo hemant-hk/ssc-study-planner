@@ -35,6 +35,7 @@ export interface PredictedTopic {
   probability: string;
   reason: string;
   preparationTip: string;
+  detail?: string;
 }
 
 export interface StudyChapter {
@@ -468,17 +469,88 @@ Respond with your note as PLAIN MARKDOWN TEXT. Do NOT wrap it in code fences or 
   return text.trim();
 }
 
+// Generate a detailed, self-contained note for a *single* predicted topic:
+// this is what the student sees when they click a predicted topic in the UI.
+export async function generateTopicDetail(
+  videoInfo: YouTubeVideoInfo,
+  topic: string,
+  existingPlan?: StudyPlan | null
+): Promise<string> {
+  const baseContext = buildBaseContext(videoInfo);
+  const relatedNotes = existingPlan?.lastYearNotes?.length
+    ? existingPlan.lastYearNotes
+      .filter((n) => n.topic.toLowerCase().includes(topic.toLowerCase()) || topic.toLowerCase().includes(n.topic.toLowerCase()))
+      .slice(0, 3)
+    : [];
+  const yearContext = relatedNotes.length
+    ? `Related previous-year notes: ${relatedNotes.map((n) => `- ${n.topic} (${n.frequency}): ${n.notes}`).join("\n")}`
+    : "";
+
+  const prompt = `You are an expert SSC exam mentor. Write COMPLETE, DETAILED study material for this single predicted topic.
+
+Topic: ${topic}
+
+Video Title: ${videoInfo.title}
+Video Author: ${videoInfo.author}
+Video Description:
+${videoInfo.description.slice(0, 1200)}
+${yearContext}
+
+Cover in clear Markdown with headings and bullet points:
+1. **What this topic is** — definition and core concept, explained simply
+2. **Why it is asked in SSC exams** — how it has appeared in CGL/CHSL/CPO/MTS papers, its weightage and trend
+3. **Key facts, dates, names, formulas** — the exact exam-relevant details to memorize
+4. **Common mistakes to avoid** — traps students fall into in the exam
+5. **Memory hooks / tricks** — quick ways to remember it
+6. **How to prepare** — a short practice strategy with previous year question pointers
+
+Be thorough and specific with real numbers, dates, names and examples. Respond as PLAIN MARKDOWN TEXT only. No JSON, no code fences, no preamble.`;
+
+  const text = await callAI(prompt, 6000, false);
+  return text.trim();
+}
+
 function normalizePlan(data: Record<string, any>): StudyPlan {
   return {
     summary: data.summary || "",
-    keyTopics: data.keyTopics || [],
-    chapters: data.chapters || [],
-    revisionPoints: data.revisionPoints || [],
+    keyTopics: Array.isArray(data.keyTopics) ? data.keyTopics : [],
+    chapters: Array.isArray(data.chapters)
+      ? data.chapters.map((ch: Record<string, any>) => ({
+          title: ch.title || "",
+          timestamp: ch.timestamp || "0:00",
+          keyConcepts: Array.isArray(ch.keyConcepts) ? ch.keyConcepts : [],
+          notes: ch.notes || "",
+        }))
+      : [],
+    revisionPoints: Array.isArray(data.revisionPoints) ? data.revisionPoints : [],
     difficulty: data.difficulty || "Intermediate",
     estimatedStudyTime: data.estimatedStudyTime || "1 hour",
-    quiz: data.quiz || [],
-    lastYearNotes: data.lastYearNotes || [],
-    predictedTopics: data.predictedTopics || [],
+    quiz: Array.isArray(data.quiz)
+      ? data.quiz.map((q: Record<string, any>) => ({
+          question: q.question || "",
+          options: Array.isArray(q.options) ? q.options : [],
+          correctAnswer: q.correctAnswer || 0,
+          explanation: q.explanation || "",
+          difficulty: q.difficulty || "medium",
+        }))
+      : [],
+    lastYearNotes: Array.isArray(data.lastYearNotes)
+      ? data.lastYearNotes.map((n: Record<string, any>) => ({
+          topic: n.topic || "",
+          frequency: n.frequency || "",
+          notes: n.notes || "",
+          exams: Array.isArray(n.exams) ? n.exams : [],
+        }))
+      : [],
+    predictedTopics: Array.isArray(data.predictedTopics)
+      ? data.predictedTopics.map((p: Record<string, any>) => ({
+          topic: p.topic || "",
+          probability: p.probability || "Medium",
+          reason: p.reason || "",
+          preparationTip: p.preparationTip || "",
+          detail: p.detail || undefined,
+        }))
+      : [],
     fullNotes: data.fullNotes || "",
   };
 }

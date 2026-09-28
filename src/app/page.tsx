@@ -37,6 +37,7 @@ interface PredictedTopic {
   probability: string;
   reason: string;
   preparationTip: string;
+  detail?: string;
 }
 
 interface StudyPlan {
@@ -91,18 +92,9 @@ const DAILY_QUOTES = [
 ];
 
 export default function Home() {
-  // Hydrate synchronously from the localStorage cache so the sidebar subjects
-  // render instantly on first click; the /api/subjects fetch refines in
-  // background (this is critical when the cloud is slow/unreachable).
-  const [subjects, setSubjects] = useState<Subject[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const saved = localStorage.getItem("yt-study-subjects");
-      return saved ? (JSON.parse(saved) as Subject[]) : [];
-    } catch {
-      return [];
-    }
-  });
+  // SSR and first client render start empty so hydration never mismatches.
+  // localStorage + /api/subjects data are loaded in a mount effect below.
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [showNewSubject, setShowNewSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
@@ -112,6 +104,8 @@ export default function Home() {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeChapter, setActiveChapter] = useState<number | null>(null);
+  const [activePredictedTopic, setActivePredictedTopic] = useState<number | null>(null);
+  const [generatingTopicDetail, setGeneratingTopicDetail] = useState<string | null>(null);
   const [addingToSubject, setAddingToSubject] = useState<string | null>(null);
   const [playlistProgress, setPlaylistProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
@@ -137,24 +131,10 @@ export default function Home() {
   const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [videoFilter, setVideoFilter] = useState<"all" | "pending" | "completed">("all");
-  const [completedVideos, setCompletedVideos] = useState<Record<string, boolean>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      return JSON.parse(localStorage.getItem("yt-study-done") || "{}");
-    } catch {
-      return {};
-    }
-  });
-  const [revCheck, setRevCheck] = useState<Record<string, number[]>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      return JSON.parse(localStorage.getItem("yt-study-revision") || "{}");
-    } catch {
-      return {};
-    }
-  });
+  const [completedVideos, setCompletedVideos] = useState<Record<string, boolean>>({});
+  const [revCheck, setRevCheck] = useState<Record<string, number[]>>({});
   // "checking" | "cloud" | "file" | "off" — which storage syncs your data across
-  // devices. cloud = Supabase reachable, file = this server's own store,
+  // devices. cloud = Upstash Redis reachable, file = this server's own store,
   // off = only this browser (neither cloud nor server store available).
   const [syncStatus, setSyncStatus] = useState<"checking" | "cloud" | "file" | "off">("checking");
   // Live SSC notice board (admin-editable via /api/notices); falls back to the
@@ -176,7 +156,7 @@ export default function Home() {
 
   useEffect(() => {
     // Probe which store answers, so the UI can show whether data syncs across
-    // devices and what backs it (Supabase cloud vs this server's file).
+    // devices and what backs it (Upstash Redis cloud vs this server's file).
     fetch("/api/cache?probe=1")
       .then((res) => (res.ok ? res.json() : { store: "off" }))
       .then((body: { store?: string }) => {
@@ -184,6 +164,31 @@ export default function Home() {
         setSyncStatus(store === "cloud" ? "cloud" : store === "file" ? "file" : "off");
       })
       .catch(() => setSyncStatus("off"));
+
+    // Hydrate instantly from the localStorage cache so the sidebar renders
+    // before the network round-trip; /api/subjects then refines with fresh data.
+    try {
+      const saved = localStorage.getItem("yt-study-subjects");
+      if (saved) {
+        const cached = JSON.parse(saved) as Subject[];
+        if (Array.isArray(cached)) setSubjects(cached);
+      }
+    } catch {
+      // corrupted cache — fall through to the fetch below
+    }
+
+    try {
+      const saved = localStorage.getItem("yt-study-done");
+      if (saved) setCompletedVideos(JSON.parse(saved));
+    } catch {
+      // ignore corrupted revision cache
+    }
+    try {
+      const saved = localStorage.getItem("yt-study-revision");
+      if (saved) setRevCheck(JSON.parse(saved));
+    } catch {
+      // ignore corrupted completion cache
+    }
 
     fetch("/api/subjects")
       .then((res) => res.json())
@@ -261,18 +266,23 @@ export default function Home() {
     }
   }, [subjects, activeVideoId]);
 
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
 
+  useEffect(() => setMounted(true), []);
   useEffect(() => {
+    setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const timeString = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-  const dateString = now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / 86_400_000);
-  const dailyQuote = DAILY_QUOTES[dayOfYear % DAILY_QUOTES.length];
+  // Only resolve clock strings after mount: SSR would render a different time
+  // than the client's first hydration paint, which breaks React hydration.
+  const timeString = mounted && now ? now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—:—:—";
+  const dateString = mounted && now ? now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+  const startOfYear = mounted && now ? new Date(now.getFullYear(), 0, 1) : new Date(0, 0, 1);
+  const dayOfYear = mounted && now ? Math.floor((now.getTime() - startOfYear.getTime()) / 86_400_000) : 0;
+  const dailyQuote = DAILY_QUOTES[mounted ? dayOfYear % DAILY_QUOTES.length : 0];
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -618,6 +628,36 @@ export default function Home() {
     if (activeVideoId === videoId) setActiveVideoId(null);
   }
 
+  async function generateTopicDetailForVideo(subjectId: string, videoId: string, topic: string) {
+    if (inFlightPlans.current.has(videoId)) return;
+    inFlightPlans.current.add(videoId);
+    setGeneratingTopicDetail(topic);
+    setError("");
+    try {
+      const cachedPlan = await getCachedPlan(videoId);
+      const res = await fetch("/api/study-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: `https://youtube.com/watch?v=${videoId}`,
+          style: "topic-detail",
+          topic,
+          ...(cachedPlan ? { plan: cachedPlan } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate topic detail");
+      await setCachedPlan(videoId, data.studyPlan);
+      applyPlanToVideo(subjectId, videoId, data.studyPlan);
+    } catch (err: unknown) {
+      inFlightPlans.current.delete(videoId);
+      setError(err instanceof Error ? err.message : "Failed to generate topic detail");
+    } finally {
+      inFlightPlans.current.delete(videoId);
+      setGeneratingTopicDetail(null);
+    }
+  }
+
   function handleVideoClick(subjectId: string, video: SubjectVideo) {
     if (video.studyPlan) {
       setActiveVideoId(video.videoId);
@@ -650,7 +690,7 @@ export default function Home() {
                   : syncStatus === "file"
                   ? "bg-white/5 border-white/10 text-zinc-400"
                   : "bg-white/5 border-white/10 text-zinc-400"
-              }`} title={syncStatus === "cloud" ? "Data saves to the Supabase cloud and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
+              }`} title={syncStatus === "cloud" ? "Data saves to the cloud (Upstash Redis) and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
                 {syncStatus === "cloud" ? "Cloud sync" : syncStatus === "file" ? "Server sync" : "Local only"}
               </span>
             )}
@@ -1108,7 +1148,7 @@ export default function Home() {
                               <NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={`${note.topic}: ${note.notes}`} title="Save note" />
                             </div>
                             <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">{note.notes}</p>
-                            <div className="flex flex-wrap gap-1 mt-1.5">{note.exams.map((exam, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">{exam}</span>)}</div>
+                            <div className="flex flex-wrap gap-1 mt-1.5">{(note.exams || []).map((exam, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">{exam}</span>)}</div>
                           </li>
                         ))}
                       </ul>
@@ -1125,9 +1165,29 @@ export default function Home() {
                         {activeVideo.studyPlan.predictedTopics.map((topic, i) => {
                           const probClass = topic.probability === "High" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : topic.probability === "Medium" ? "bg-amber-500/10 border-amber-500/30 text-amber-300" : "bg-zinc-900 border-zinc-800 text-zinc-400";
                           return (
-                            <li key={i} title={`Why: ${topic.reason} · Tip: ${topic.preparationTip}`} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full border ${probClass}`}>{topic.probability}</span>
-                              <span className="text-sm font-medium text-zinc-200 flex-1 truncate">{topic.topic}</span>
+                            <li key={i} className="py-2 first:pt-0 last:pb-0">
+                              <div onClick={() => setActivePredictedTopic(activePredictedTopic === i ? null : i)} className="flex items-center gap-3 py-2.5 -my-1 cursor-pointer rounded-lg hover:bg-white/[0.03] transition-colors">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${probClass}`}>{topic.probability}</span>
+                                <span className="text-sm font-medium text-zinc-200 flex-1 truncate">{topic.topic}</span>
+                                <svg className={`w-4 h-4 text-zinc-500 transition-transform ${activePredictedTopic === i ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                              </div>
+                              {activePredictedTopic === i && (
+                                <div className="ml-[52px] mt-1 mb-2 space-y-3">
+                                  <div className="text-xs text-zinc-300"><span className="text-zinc-500 font-medium">Why asked:</span> {topic.reason || "—"}</div>
+                                  <div className="text-xs text-zinc-300"><span className="text-zinc-500 font-medium">Preparation tip:</span> {topic.preparationTip || "—"}</div>
+                                  {topic.detail && topic.detail.trim().length > 0 ? (
+                                    <div className="text-sm text-zinc-400 leading-relaxed whitespace-pre-wrap rounded-lg bg-white/[0.03] border border-white/10 p-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-zinc-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-zinc-200 [&_h3]:mt-2 [&_h3]:mb-0.5 [&_strong]:text-zinc-50 [&_li]:ml-4 [&_ul]:list-disc [&_ol]:list-decimal">
+                                      {topic.detail}
+                                    </div>
+                                  ) : (
+                                    <button onClick={(e) => { e.stopPropagation(); generateTopicDetailForVideo(activeSubject.id, activeVideo.videoId, topic.topic); }} disabled={generatingTopicDetail === topic.topic}
+                                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-xs font-medium hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                      {generatingTopicDetail === topic.topic && <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
+                                      {generatingTopicDetail === topic.topic ? "Generating detail..." : "Generate full detail"}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </li>
                           );
                         })}
@@ -1150,7 +1210,7 @@ export default function Home() {
                       </div>
                       {activeChapter === i && (
                         <div className="mt-3 ml-10">
-                          <div className="flex flex-wrap gap-1 mb-2">{ch.keyConcepts.map((c, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-1.5 py-0.5 rounded">{c}</span>)}</div>
+                          <div className="flex flex-wrap gap-1 mb-2">{(ch.keyConcepts || []).map((c, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 px-1.5 py-0.5 rounded">{c}</span>)}</div>
                           <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">{ch.notes}</p>
                         </div>
                       )}
@@ -1209,11 +1269,11 @@ export default function Home() {
                               topic={videoMeta?.topic || activeVideo.title}
                               videoId={activeVideo.videoId}
                               contentType="quiz"
-                              content={`Q. ${q.question}\n${q.options.map((o, j) => `${String.fromCharCode(65 + j)}) ${o}`).join("\n")}\nCorrect Answer: ${String.fromCharCode(65 + q.correctAnswer)}. ${q.options[q.correctAnswer]}${q.explanation ? `\nExplanation: ${q.explanation}` : ""}`}
+                              content={`Q. ${q.question}\n${(q.options || []).map((o, j) => `${String.fromCharCode(65 + j)}) ${o}`).join("\n")}\nCorrect Answer: ${String.fromCharCode(65 + q.correctAnswer)}. ${q.options?.[q.correctAnswer] || ""}${q.explanation ? `\nExplanation: ${q.explanation}` : ""}`}
                             />
                           </div>
                           <div className="ml-9 space-y-2">
-                            {q.options.map((opt, j) => {
+                            { (q.options || []).map((opt, j) => {
                               const isSelected = selected === j;
                               let optClass = "border-white/10 hover:border-white/20";
                               if (quizSubmitted && j === q.correctAnswer) optClass = "border-white/40 bg-white/10";
