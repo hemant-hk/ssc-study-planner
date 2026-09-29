@@ -6,7 +6,7 @@ import {
   fetchPlaylistInfo,
 } from "@/lib/youtube";
 import type { YouTubeVideoInfo } from "@/lib/youtube";
-import { generateStudyPlan, generateQuiz, generateFullNotes, generateTopicDetail, AIProviderError, type StudyPlan } from "@/lib/gemini";
+import { generateStudyPlan, generateQuiz, generateFullNotes, generateTopicDetail, generateRevisionDetail, AIProviderError, type StudyPlan } from "@/lib/gemini";
 
 // No server-side filesystem access here. Serverless runtimes (Vercel) mount
 // the filesystem read-only, so writing e.g. data/study-plans.json would throw
@@ -83,6 +83,34 @@ export async function POST(request: NextRequest) {
         predictedTopics: base.predictedTopics.map((p) =>
           p.topic === topic ? { ...p, detail } : p
         ),
+      };
+      return Response.json({ type: "video", videoInfo, studyPlan: merged });
+    }
+
+    if (style === "revision-detail") {
+      const existing = cachedPlan as StudyPlan | undefined;
+      const base = existing || (await generateStudyPlan(videoInfo));
+      const detail = await generateRevisionDetail(videoInfo, topic, base);
+      const merged: StudyPlan = {
+        ...base,
+        revisionPoints: base.revisionPoints.map((p) =>
+          p.point === topic ? { ...p, detail } : p
+        ),
+      };
+      return Response.json({ type: "video", videoInfo, studyPlan: merged });
+    }
+
+    if (style === "revision-detail") {
+      const existing = cachedPlan as StudyPlan | undefined;
+      const base = existing || (await generateStudyPlan(videoInfo));
+      const detail = await generateRevisionDetail(videoInfo, topic, base);
+      const merged: StudyPlan = {
+        ...base,
+        revisionPoints: (base.revisionPoints || []).map((p) => {
+          const pointText = typeof p === "string" ? p : p?.point || "";
+          const priorDetail = typeof p === "string" ? undefined : p?.detail;
+          return pointText === topic ? { point: pointText, detail } : { point: pointText, detail: priorDetail };
+        }),
       };
       return Response.json({ type: "video", videoInfo, studyPlan: merged });
     }

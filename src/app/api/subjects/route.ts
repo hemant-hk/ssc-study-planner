@@ -15,6 +15,21 @@ import { getServerRedis, markRedisReachable, markRedisUnreachable, hgetallToReco
 const DATA_FILE = path.join(process.cwd(), "data", "subjects.json");
 const SUBJECTS_HASH = "subjects";
 const KEY_PREFIX = "subject:";
+// Short-lived in-memory cache so a hard refresh doesn't round-trip the whole
+// cloud hash (subjects can embed large study plans) every time. Reads are the
+// hot path; every write (POST/PUT/DELETE) invalidates it below.
+const SUBJECTS_CACHE_TTL_MS = 30_000;
+let subjectsCache: { at: number; data: string } | null = null;
+
+function getCachedSubjectsPayload(): string | null {
+  if (!subjectsCache) return null;
+  if (Date.now() - subjectsCache.at > SUBJECTS_CACHE_TTL_MS) return null;
+  return subjectsCache.data;
+}
+
+function cacheSubjectsPayload(payload: string): void {
+  subjectsCache = { at: Date.now(), data: payload };
+}
 // Marker field written once after the local file is migrated to the cloud. Its
 // presence means "the file already seeded the cloud", so an empty cloud is a
 // real empty state (user deleted everything) rather than "not yet migrated" —
@@ -160,8 +175,18 @@ function isAdmin(request: NextRequest): Promise<boolean> {
 
 export async function GET() {
   try {
+    const cached = getCachedSubjectsPayload();
+    if (cached) {
+      return new Response(cached, {
+        headers: { "Content-Type": "application/json", "Cache-Control": "max-age=0, s-maxage=0, no-cache" },
+      });
+    }
     const subjects = await readSubjects();
-    return Response.json(subjects);
+    const payload = JSON.stringify(subjects);
+    cacheSubjectsPayload(payload);
+    return new Response(payload, {
+      headers: { "Content-Type": "application/json", "Cache-Control": "max-age=0, s-maxage=0, no-cache" },
+    });
   } catch {
     return Response.json({ error: "Failed to read subjects" }, { status: 500 });
   }
@@ -177,6 +202,7 @@ export async function POST(request: NextRequest) {
     const newSubject = await request.json();
     subjects.push(newSubject);
     await persistSubjects(subjects);
+    subjectsCache = null;
     return Response.json({ success: true, subject: newSubject });
   } catch {
     return Response.json({ error: "Failed to save subject" }, { status: 500 });
@@ -198,6 +224,7 @@ export async function PUT(request: NextRequest) {
       subjects.push(updatedSubject);
     }
     await persistSubjects(subjects);
+    subjectsCache = null;
     return Response.json({ success: true });
   } catch {
     return Response.json({ error: "Failed to update subject" }, { status: 500 });
@@ -220,6 +247,7 @@ export async function DELETE(request: NextRequest) {
     } catch {
       // Rule: only write the file if we can; the cloud delete is authoritative.
     }
+    subjectsCache = null;
     return Response.json({ success: true });
   } catch {
     return Response.json({ error: "Failed to delete subject" }, { status: 500 });

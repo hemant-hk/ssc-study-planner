@@ -14,13 +14,20 @@ export interface StudyPlan {
   summary: string;
   keyTopics: string[];
   chapters: StudyChapter[];
-  revisionPoints: string[];
+  revisionPoints: RevisionPoint[];
   difficulty: string;
   estimatedStudyTime: string;
   quiz: QuizQuestion[];
   lastYearNotes: ImportantNote[];
   predictedTopics: PredictedTopic[];
   fullNotes?: string;
+}
+
+// A revision point is a one-line fact to revise. `detail` is filled in on
+// demand (like PredictedTopic.detail) when the student clicks the point.
+export interface RevisionPoint {
+  point: string;
+  detail?: string;
 }
 
 export interface ImportantNote {
@@ -510,6 +517,47 @@ Be thorough and specific with real numbers, dates, names and examples. Respond a
   return text.trim();
 }
 
+// Generate a detailed explanation for a *single* revision point: what the
+// student sees when they click a point in the Revision Points list.
+export async function generateRevisionDetail(
+  videoInfo: YouTubeVideoInfo,
+  point: string,
+  existingPlan?: StudyPlan | null
+): Promise<string> {
+  const baseContext = buildBaseContext(videoInfo);
+  const relatedNotes = existingPlan?.lastYearNotes?.length
+    ? existingPlan.lastYearNotes
+      .filter((n) => n.topic.toLowerCase().includes(point.toLowerCase()) || point.toLowerCase().includes(n.topic.toLowerCase()))
+      .slice(0, 3)
+    : [];
+  const yearContext = relatedNotes.length
+    ? `Related previous-year notes: ${relatedNotes.map((n) => `- ${n.topic} (${n.frequency}): ${n.notes}`).join("\n")}`
+    : "";
+
+  const prompt = `You are an expert SSC exam mentor. A student is revising this topic and tapped on the single revision point below. Explain that point thoroughly in clear Markdown.
+
+Revision point: ${point}
+
+Video Title: ${videoInfo.title}
+Video Author: ${videoInfo.author}
+Video Description:
+${videoInfo.description.slice(0, 1200)}
+${yearContext}
+
+Cover in clear Markdown with headings and bullet points:
+1. **What it means** — explain the point clearly, unpacking every term, date, name or number in it
+2. **Why it matters** — its significance in history/geography/polity/economy/etc. and how SSC frames it
+3. **Exam relevance** — how this kind of point is asked in CGL/CHSL/CPO/MTS, with weightage and trends
+4. **Related facts** — closely connected dates, people, places, treaties or events the student should link it to
+5. **Common confusions** — similar-looking facts that are often mixed up
+6. **Memory hook** — a quick way to remember it
+
+Be specific with real numbers, dates, names and examples. Respond as PLAIN MARKDOWN TEXT only. No JSON, no code fences, no preamble.`;
+
+  const text = await callAI(prompt, 6000, false);
+  return text.trim();
+}
+
 function normalizePlan(data: Record<string, any>): StudyPlan {
   return {
     summary: data.summary || "",
@@ -522,7 +570,17 @@ function normalizePlan(data: Record<string, any>): StudyPlan {
           notes: ch.notes || "",
         }))
       : [],
-    revisionPoints: Array.isArray(data.revisionPoints) ? data.revisionPoints : [],
+    revisionPoints: Array.isArray(data.revisionPoints)
+      ? data.revisionPoints
+          .map((r: any) => {
+            // Backward/forward compatible: accept both a plain string and an
+            // object { point, detail } (detail filled in on demand).
+            if (typeof r === "string") return { point: r, detail: undefined };
+            if (r && typeof r === "object") return { point: r.point || "", detail: r.detail || undefined };
+            return { point: String(r ?? ""), detail: undefined };
+          })
+          .filter((r: RevisionPoint) => r.point.trim().length > 0)
+      : [],
     difficulty: data.difficulty || "Intermediate",
     estimatedStudyTime: data.estimatedStudyTime || "1 hour",
     quiz: Array.isArray(data.quiz)

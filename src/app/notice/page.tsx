@@ -1,4 +1,4 @@
-import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 import { getDaysLeft } from "@/lib/ssc-notices";
 import { loadNotices } from "@/lib/notices-store";
 
@@ -12,10 +12,9 @@ export default async function NoticePage() {
   const chslDays = chsl ? getDaysLeft(chslDate) : -1;
 
   return (
-    <div className="min-h-screen bg-black p-4 md:p-8">
-      <div className="max-w-3xl mx-auto">
-        <Link href="/" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors mb-6 block">← Back to Study Planner</Link>
-
+    <div className="min-h-screen bg-black">
+      <AppHeader title="Notices" />
+      <div className="max-w-3xl mx-auto p-4 md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <p className="text-[11px] font-semibold text-zinc-400 tracking-widest uppercase mb-1">Official Notices</p>

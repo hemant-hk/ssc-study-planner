@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 
 interface RosterTask {
   id: string;
@@ -154,10 +154,9 @@ export default function Roster() {
   }
 
   return (
-    <div className="min-h-screen bg-black p-4 md:p-8">
-      <div className="max-w-3xl mx-auto">
-        <Link href="/" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors mb-6 block">← Back to Study Planner</Link>
-
+    <div className="min-h-screen bg-black">
+      <AppHeader title="Roster" />
+      <div className="max-w-3xl mx-auto p-4 md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <p className="text-[11px] font-semibold text-zinc-400 tracking-widest uppercase mb-1">Daily Discipline System</p>
