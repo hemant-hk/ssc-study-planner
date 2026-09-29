@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
+import {
+  QUALIFICATIONS,
+  STUDY_SLOTS,
+  TARGET_EXAMS,
+  type StudentProfile,
+} from "@/lib/student-options";
 
 export interface DashUser {
   id: string;
@@ -113,7 +119,12 @@ const GUEST_USER: DashUser = {
 };
 
 export default function DashboardClient({ user }: { user?: DashUser }) {
-  const profile = user || GUEST_USER;
+  const guest = user || GUEST_USER;
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [doubts, setDoubts] = useState<Doubt[]>([]);
@@ -123,11 +134,81 @@ export default function DashboardClient({ user }: { user?: DashUser }) {
   const [roster, setRoster] = useState<{ date: string; tasks: { done: boolean }[]; closed: boolean }[]>([]);
   const [tab, setTab] = useState<Tab>("notes");
   const [editingGoal, setEditingGoal] = useState(false);
-  const [dailyGoal, setDailyGoal] = useState(() => {
-    if (typeof window === "undefined") return String(profile.dailyGoal || 0);
-    return localStorage.getItem("yt-study-daily-goal") || String(profile.dailyGoal || 0);
+  const [dailyGoal, setDailyGoal] = useState("0");
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    city: "",
+    college: "",
+    qualification: "",
+    yearOfPassing: "",
+    targetExam: "",
+    examDate: "",
+    studyTime: "",
+    goals: "",
   });
-  const [savedMsg, setSavedMsg] = useState("");
+
+  function startEdit() {
+    const base = profile;
+    setEditingProfile(true);
+    setSavedMsg("");
+    setForm({
+      name: base?.name || "",
+      email: base?.email || "",
+      phone: base?.phone || "",
+      city: base?.city || "",
+      college: base?.college || "",
+      qualification: base?.qualification || "",
+      yearOfPassing: base?.yearOfPassing || "",
+      targetExam: base?.targetExam || "",
+      examDate: base?.examDate || "",
+      studyTime: base?.studyTime || "",
+      goals: base?.goals || "",
+    });
+    setDailyGoal(String(base?.dailyGoal || 0));
+  }
+
+  async function saveProfile() {
+    setSavingProfile(true);
+    try {
+      const res = await fetch("/api/students", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, dailyGoal: Number(dailyGoal) || 0 }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || `Failed (${res.status})`);
+      const updated = data?.profile;
+      if (updated) {
+        setProfile(updated);
+        setDailyGoal(String(updated.dailyGoal || 0));
+        localStorage.setItem("yt-study-daily-goal", String(updated.dailyGoal || 0));
+      }
+      setEditingProfile(false);
+      setSavedMsg("Profile saved ✓");
+      setTimeout(() => setSavedMsg(""), 2500);
+    } catch (err) {
+      setSavedMsg(err instanceof Error ? `Save failed: ${err.message}` : "Save failed");
+      setTimeout(() => setSavedMsg(""), 3000);
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  useEffect(() => {
+    fetch("/api/students")
+      .then((r) => r.json())
+      .then((data) => {
+        const p = data?.profile;
+        if (p) {
+          setProfile(p as StudentProfile);
+          setDailyGoal(String(p.dailyGoal || 0));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setProfileLoading(false));
+  }, []);
 
   useEffect(() => {
     fetch("/api/subjects")
@@ -183,6 +264,32 @@ export default function DashboardClient({ user }: { user?: DashUser }) {
     const v = Number(dailyGoal);
     if (!Number.isFinite(v) || v < 0) return;
     localStorage.setItem("yt-study-daily-goal", String(Math.round(v)));
+    if (profile) {
+      try {
+        const res = await fetch("/api/students", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: profile.name,
+            email: profile.email,
+            phone: profile.phone,
+            city: profile.city,
+            college: profile.college,
+            qualification: profile.qualification,
+            yearOfPassing: profile.yearOfPassing,
+            targetExam: profile.targetExam,
+            examDate: profile.examDate,
+            studyTime: profile.studyTime,
+            goals: profile.goals,
+            dailyGoal: Math.round(v),
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.profile) setProfile(data.profile);
+      } catch {
+        // quiet: localStorage value is already updated
+      }
+    }
     setEditingGoal(false);
     setSavedMsg("Daily goal updated ✓");
     setTimeout(() => setSavedMsg(""), 2000);
@@ -220,51 +327,167 @@ export default function DashboardClient({ user }: { user?: DashUser }) {
         <h1 className="text-2xl font-bold text-white tracking-tight mb-4">Dashboard</h1>
 
         <section className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-5 md:p-6 mb-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-white text-black text-lg font-bold flex items-center justify-center flex-shrink-0">
-              {initials(profile.name || profile.email)}
-            </div>
-            <div className="flex-1 min-w-[160px]">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg font-bold text-white">{profile.name}</h1>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide ${
-                  profile.role === "admin"
-                    ? "bg-white text-black"
-                    : "bg-zinc-900 border border-zinc-700 text-zinc-300"
-                }`}>
-                  {profile.role}
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400 mt-0.5">{profile.email}</p>
-              <p className="text-xs text-zinc-300 mt-1.5">
-                Target: <span className="text-white font-medium">{profile.targetExam || "Not set"}</span>
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-1.5">
-              <p className="text-[11px] uppercase tracking-widest text-zinc-500">Daily study goal</p>
-              {editingGoal ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={dailyGoal}
-                    onChange={(e) => setDailyGoal(e.target.value)}
-                    className="w-24 bg-black border border-zinc-700 rounded-lg px-2 py-1 text-sm text-white outline-none focus:border-white/40"
-                  />
-                  <button onClick={saveGoal} className="text-xs bg-white text-black px-3 py-1.5 rounded-lg hover:bg-zinc-200">Save</button>
-                  <button onClick={() => setEditingGoal(false)} className="text-xs text-zinc-400 hover:text-white">Cancel</button>
+          {profileLoading && (
+            <p className="text-sm text-zinc-400">Loading your details…</p>
+          )}
+
+          {!profileLoading && !editingProfile && (
+            <>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-white text-black text-lg font-bold flex items-center justify-center flex-shrink-0">
+                  {initials(profile?.name || guest.name || profile?.email || "S")}
                 </div>
-              ) : (
-                <button
-                  onClick={() => { setEditingGoal(true); setDailyGoal(String(profile.dailyGoal)); setSavedMsg(""); }}
-                  className="text-sm text-white font-semibold hover:underline"
-                  title="Edit daily goal"
-                >
-                  {profile.dailyGoal > 0 ? `${profile.dailyGoal} min` : "Let’s set one"}
-                </button>
+                <div className="flex-1 min-w-[160px]">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-lg font-bold text-white">
+                      {profile?.name || (profile ? "Your profile" : "Student profile")}
+                    </h1>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide ${
+                      profile?.role === "admin"
+                        ? "bg-white text-black"
+                        : "bg-zinc-900 border border-zinc-700 text-zinc-300"
+                    }`}>
+                      {profile?.role || "student"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5">{profile?.email || "Add your details to personalise the dashboard"}</p>
+                  <p className="text-xs text-zinc-300 mt-1.5">
+                    Target: <span className="text-white font-medium">{profile?.targetExam || "Not set"}</span>
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  <p className="text-[11px] uppercase tracking-widest text-zinc-500">Daily study goal</p>
+                  {editingGoal ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={dailyGoal}
+                        onChange={(e) => setDailyGoal(e.target.value)}
+                        className="w-24 bg-black border border-zinc-700 rounded-lg px-2 py-1 text-sm text-white outline-none focus:border-white/40"
+                      />
+                      <button onClick={saveGoal} className="text-xs bg-white text-black px-3 py-1.5 rounded-lg hover:bg-zinc-200">Save</button>
+                      <button onClick={() => setEditingGoal(false)} className="text-xs text-zinc-400 hover:text-white">Cancel</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setEditingGoal(true); setDailyGoal(String(profile?.dailyGoal || 0)); setSavedMsg(""); }}
+                      className="text-sm text-white font-semibold hover:underline"
+                      title="Edit daily goal"
+                    >
+                      {(profile?.dailyGoal || 0) > 0 ? `${profile?.dailyGoal} min` : "Let’s set one"}
+                    </button>
+                  )}
+                  {savedMsg && <p className="text-[11px] text-emerald-400">{savedMsg}</p>}
+                </div>
+              </div>
+
+              {(profile?.name || profile?.phone || profile?.city || profile?.goals) && (
+                <div className="mt-4 pt-4 border-t border-zinc-800 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: "Phone", value: profile?.phone },
+                    { label: "City", value: profile?.city },
+                    { label: "Exam date", value: profile?.examDate },
+                    { label: "Study slot", value: profile?.studyTime },
+                    { label: "College", value: profile?.college },
+                    { label: "Qualification", value: profile?.qualification },
+                    { label: "Passing year", value: profile?.yearOfPassing },
+                    { label: "Goals", value: profile?.goals },
+                  ]
+                    .filter((d) => d.value)
+                    .map((d) => (
+                      <div key={d.label}>
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">{d.label}</p>
+                        <p className="text-sm text-zinc-200 mt-0.5 break-words">{d.value}</p>
+                      </div>
+                    ))}
+                </div>
               )}
-              {savedMsg && <p className="text-[11px] text-emerald-400">{savedMsg}</p>}
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={startEdit}
+                  className="text-xs bg-white text-black px-3.5 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
+                >
+                  {profile?.name ? "Edit my details" : "Add your details ↗"}
+                </button>
+                {!profile?.name && (
+                  <p className="text-[11px] text-zinc-500">Tell us your name, target exam, exam date and study time — sab aapke apne hain, kisi aur student ka data yahan nahi dikhega.</p>
+                )}
+              </div>
+            </>
+          )}
+
+          {!profileLoading && editingProfile && (
+            <div>
+              <h2 className="text-lg font-bold text-white mb-4">{profile?.name ? "Edit your details" : "Add your details"}</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Full name</span>
+                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Rahul Sharma" className="input" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Email</span>
+                  <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="rahul@example.com" className="input" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Phone</span>
+                  <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 98XXX XXXXX" className="input" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">City</span>
+                  <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="e.g. Jaipur" className="input" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">College / School</span>
+                  <input value={form.college} onChange={(e) => setForm({ ...form, college: e.target.value })} placeholder="e.g. St. Xavier’s" className="input" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Qualification</span>
+                  <select value={form.qualification} onChange={(e) => setForm({ ...form, qualification: e.target.value })} className="input">
+                    <option value="">Select</option>
+                    {QUALIFICATIONS.map((q) => <option key={q} value={q}>{q}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Year of passing</span>
+                  <input inputMode="numeric" maxLength={4} value={form.yearOfPassing} onChange={(e) => setForm({ ...form, yearOfPassing: e.target.value.replace(/\D/g, "") })} placeholder="e.g. 2025" className="input" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Target exam</span>
+                  <select value={form.targetExam} onChange={(e) => setForm({ ...form, targetExam: e.target.value })} className="input">
+                    <option value="">Select</option>
+                    {TARGET_EXAMS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Exam date</span>
+                  <input type="date" value={form.examDate} onChange={(e) => setForm({ ...form, examDate: e.target.value })} className="input" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Preferred study time</span>
+                  <select value={form.studyTime} onChange={(e) => setForm({ ...form, studyTime: e.target.value })} className="input">
+                    <option value="">Select</option>
+                    {STUDY_SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+                <div className="sm:col-span-2">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Daily study goal (in minutes)</span>
+                  <input type="number" min={0} max={1440} value={dailyGoal} onChange={(e) => setDailyGoal(e.target.value)} placeholder="e.g. 180" className="input" />
+                </div>
+                <label className="block sm:col-span-2">
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">Your goals / notes for exam</span>
+                  <textarea rows={3} value={form.goals} onChange={(e) => setForm({ ...form, goals: e.target.value })} placeholder="e.g. Clear SSC CGL Tier-1 in first attempt, focus on Quant." className="input resize-y" />
+                </label>
+              </div>
+              <div className="mt-5 flex items-center gap-3">
+                <button onClick={saveProfile} disabled={savingProfile} className="text-xs bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 disabled:opacity-50 transition-colors">
+                  {savingProfile ? "Saving…" : "Save details"}
+                </button>
+                <button onClick={() => { setEditingProfile(false); setSavedMsg(""); }} className="text-xs text-zinc-400 hover:text-white">Cancel</button>
+                {savedMsg && <p className="text-[11px] text-emerald-400">{savedMsg}</p>}
+              </div>
             </div>
-          </div>
+          )}
         </section>
 
         {/* Progress metrics */}
@@ -283,7 +506,7 @@ export default function DashboardClient({ user }: { user?: DashUser }) {
           <Link href="/roster" className="border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900 text-zinc-200 text-xs px-4 py-2 rounded-xl transition-colors">📅 Daily Roster</Link>
           <Link href="/mock-test" className="border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900 text-zinc-200 text-xs px-4 py-2 rounded-xl transition-colors">📝 Mock Tests</Link>
           <Link href="/pyqs" className="border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900 text-zinc-200 text-xs px-4 py-2 rounded-xl transition-colors">📚 PYQ Bank</Link>
-          <Link href="/" className="border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900 text-zinc-200 text-xs px-4 py-2 rounded-xl transition-colors">🎬 Continue Studying</Link>
+          <Link href="/study" className="border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900 text-zinc-200 text-xs px-4 py-2 rounded-xl transition-colors">🎬 Continue Studying</Link>
         </section>
 
         {/* My Library */}
@@ -312,7 +535,7 @@ export default function DashboardClient({ user }: { user?: DashUser }) {
           <div className="p-5 min-h-[160px]">
             {tab === "notes" && (
               notes.length === 0 ? (
-                <EmptyState text="No saved notes yet — open any lecture and hit Save Notes." href="/" cta="Browse lectures" />
+                <EmptyState text="No saved notes yet — open any lecture and hit Save Notes." href="/study" cta="Browse lectures" />
               ) : (
                 <div className="space-y-2">
                   {notes.slice(0, 20).map((n) => (
@@ -355,7 +578,7 @@ export default function DashboardClient({ user }: { user?: DashUser }) {
 
             {tab === "doubts" && (
               doubts.length === 0 ? (
-                <EmptyState text="No doubts asked yet. Ask one from any lecture’s discussion tab." href="/" cta="Open a lecture" />
+                <EmptyState text="No doubts asked yet. Ask one from any lecture’s discussion tab." href="/study" cta="Open a lecture" />
               ) : (
                 <div className="space-y-2">
                   {doubts.slice(0, 20).map((d) => (

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
@@ -8,6 +8,7 @@ import {
   type Note,
   type NoteContentType,
 } from "@/lib/notes-types";
+import { resolveStudentId, withStudentCookie } from "@/lib/student-store";
 
 export const runtime = "nodejs";
 
@@ -34,12 +35,13 @@ export async function GET(request: NextRequest) {
   const videoId = request.nextUrl.searchParams.get("videoId");
   const subject = request.nextUrl.searchParams.get("subject");
   const contentType = request.nextUrl.searchParams.get("contentType");
-  let notes = await readNotes();
+  const { id: studentId, isNew } = resolveStudentId(request);
+  let notes = (await readNotes()).filter((n) => !n.studentId || n.studentId === studentId);
   if (videoId) notes = notes.filter((n) => n.videoId === videoId);
   if (subject) notes = notes.filter((n) => n.subject === subject);
   if (contentType) notes = notes.filter((n) => n.contentType === contentType);
   notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return Response.json({ notes });
+  return withStudentCookie(NextResponse.json({ notes }), studentId, isNew);
 }
 
 export async function POST(request: NextRequest) {
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "content is required" }, { status: 400 });
   }
 
+  const { id: studentId, isNew } = resolveStudentId(request);
   const note: Note = {
     id: randomUUID(),
     subject: subject.slice(0, 200),
@@ -74,6 +77,7 @@ export async function POST(request: NextRequest) {
     videoId: videoId.slice(0, 200),
     contentType,
     content,
+    studentId,
     createdAt: new Date().toISOString(),
   };
 
@@ -81,7 +85,7 @@ export async function POST(request: NextRequest) {
   notes.push(note);
   await writeNotes(notes);
 
-  return Response.json({ note }, { status: 201 });
+  return withStudentCookie(NextResponse.json({ note }, { status: 201 }), studentId, isNew);
 }
 
 export async function DELETE(request: NextRequest) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import type { StudentProfile } from "@/lib/student-options";
 
 export interface AdminUser {
   id: string;
@@ -64,7 +65,7 @@ function adminHeaders(): Record<string, string> {
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 }
 
-type SectionId = "overview" | "content" | "ai" | "notices" | "doubts";
+type SectionId = "overview" | "content" | "ai" | "notices" | "doubts" | "students";
 
 const SECTIONS: { id: SectionId; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -72,6 +73,7 @@ const SECTIONS: { id: SectionId; label: string }[] = [
   { id: "ai", label: "AI Content Engine" },
   { id: "notices", label: "Notice & Calendar" },
   { id: "doubts", label: "Doubt Resolution" },
+  { id: "students", label: "Students" },
 ];
 
 const inputCls =
@@ -91,6 +93,8 @@ export default function AdminClient({ user }: { user?: AdminUser }) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [doubts, setDoubts] = useState<Doubt[]>([]);
+  const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -134,12 +138,34 @@ export default function AdminClient({ user }: { user?: AdminUser }) {
     }
   }
 
+  async function loadStudents() {
+    setStudentsLoading(true);
+    try {
+      const res = await fetch("/api/students?all=1", { headers: adminHeaders() });
+      if (!res.ok) {
+        setStudents([]);
+        return;
+      }
+      const data = await res.json();
+      if (Array.isArray(data?.students)) setStudents(data.students as StudentProfile[]);
+    } catch {
+      setStudents([]);
+    } finally {
+      setStudentsLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadSubjects();
     loadNotices();
     loadDoubts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (section === "students") loadStudents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
 
   const totalVideos = subjects.reduce((a, s) => a + s.videos.length, 0);
   const plannedVideos = subjects.reduce(
@@ -414,6 +440,58 @@ export default function AdminClient({ user }: { user?: AdminUser }) {
       <main className="max-w-6xl mx-auto px-4 py-6">
         {error && (
           <div className="mb-4 px-4 py-3 rounded-xl border border-red-900/60 bg-red-950/40 text-xs text-red-300">{error}</div>
+        )}
+
+        {section === "students" && (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="text-xl font-bold text-white">Students</h1>
+              <button onClick={loadStudents} className="text-xs border border-zinc-700 hover:bg-zinc-900 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors">
+                Refresh
+              </button>
+            </div>
+            {studentsLoading ? (
+              <p className="text-sm text-zinc-400">Loading student profiles…</p>
+            ) : students.length === 0 ? (
+              <div className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-6 text-sm text-zinc-400">
+                No student details submitted yet. Jab koi student dashboard par apne details save karega, woh yahan alag-alag dikhenge.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {students.map((s) => (
+                  <div key={s.id} className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-white">{s.name || "Unnamed student"}</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">{s.email || "—"}{s.phone ? ` · ${s.phone}` : ""}</p>
+                      </div>
+                      <span className="text-[10px] uppercase tracking-widest text-zinc-500">{s.id.slice(0, 8)}</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {[
+                        { label: "Target exam", value: s.targetExam },
+                        { label: "Exam date", value: s.examDate },
+                        { label: "Daily goal", value: s.dailyGoal > 0 ? `${s.dailyGoal} min` : "" },
+                        { label: "Study slot", value: s.studyTime },
+                        { label: "Qualification", value: s.qualification },
+                        { label: "Passing year", value: s.yearOfPassing },
+                        { label: "City", value: s.city },
+                        { label: "College", value: s.college },
+                      ]
+                        .filter((d) => d.value)
+                        .map((d) => (
+                          <div key={d.label}>
+                            <p className="text-[10px] uppercase tracking-widest text-zinc-500">{d.label}</p>
+                            <p className="text-sm text-zinc-200 mt-0.5 break-words">{d.value}</p>
+                          </div>
+                        ))}
+                    </div>
+                    {s.goals && <p className="mt-3 text-xs text-zinc-300">{s.goals}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {section === "overview" && (
