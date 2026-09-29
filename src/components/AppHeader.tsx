@@ -154,10 +154,14 @@ export default function AppHeader({
               </svg>
             </button>
             <Link href="/" className="flex items-center gap-2 min-w-0">
-              <svg className="w-7 h-7 text-white flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
-              </svg>
-              <span className="hidden sm:inline text-lg font-semibold tracking-tight text-white truncate">Study Planner</span>
+              <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg p-1.5 flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="9" />
+                  <circle cx="12" cy="12" r="5" />
+                  <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+                </svg>
+              </span>
+              <span className="hidden sm:inline text-lg font-bold tracking-tight text-white truncate">Study Planner</span>
             </Link>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
@@ -236,10 +240,14 @@ export default function AppHeader({
           <aside className="fixed inset-y-0 left-0 z-50 w-72 border-r border-white/10 bg-black flex flex-col">
             <div className="flex items-center justify-between px-4 h-16 border-b border-white/10">
               <div className="flex items-center gap-2">
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
-                </svg>
-                <span className="text-sm font-semibold text-white">Study Planner</span>
+                <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg p-1.5 flex-shrink-0">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" />
+                    <circle cx="12" cy="12" r="5" />
+                    <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+                  </svg>
+                </span>
+                <span className="text-sm font-bold tracking-tight text-white">Study Planner</span>
               </div>
               <button onClick={() => setOpen(false)} className="p-2 rounded-lg hover:bg-white/5 transition-colors" aria-label="Close menu">
                 <svg className="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
