@@ -147,7 +147,7 @@ export default function MockTest() {
         <p className="max-w-4xl mx-auto px-6 pt-6 pb-0 text-sm text-zinc-400 hover:text-zinc-100 transition-colors">
           <Link href="/">← Back to Study Planner</Link>
         </p>
-        <div className="max-w-4xl mx-auto p-6">
+        <div className="max-w-4xl mx-auto p-6 pb-24">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50 mb-2">Mock Tests</h1>
           <p className="text-zinc-400 dark:text-zinc-400 mb-8">SSC CGL style mock tests with real-time timer</p>
 
@@ -290,7 +290,7 @@ export default function MockTest() {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-black">
         <AppHeader title="Mock Tests" />
-        <div className="max-w-4xl mx-auto p-6">
+        <div className="max-w-4xl mx-auto p-6 pb-24">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50 mb-2">Test Results</h1>
             <div className={`text-6xl font-bold ${percentage >= 70 ? "text-emerald-400" : percentage >= 50 ? "text-amber-400" : "text-red-400"}`}>{percentage}%</div>

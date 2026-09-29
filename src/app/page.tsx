@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import DiscussionThread from "@/components/DiscussionThread";
 import NotesButton from "@/components/NotesButton";
+import AppHeader from "@/components/AppHeader";
 import { getCachedPlan, getCachedPlans, setCachedPlan, deleteCachedPlan } from "@/lib/study-cache";
 import { SSC_NOTICES, type SscNotice } from "@/lib/ssc-notices";
 
@@ -712,52 +713,26 @@ export default function Home() {
 
   return (
     <div className="flex flex-col flex-1 bg-black font-sans">
-      <header className="w-full border-b border-white/10 bg-black sticky top-0 z-40 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setShowSidebar(!showSidebar)} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
-              <svg className="w-6 h-6 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
-            </svg>
-            <h1 className="text-xl font-semibold tracking-tight text-white">Study Planner</h1>
-            {syncStatus !== "checking" && (
-              <span className={`hidden md:inline-flex text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap ${
-                syncStatus === "cloud"
-                  ? "bg-white/5 border-white/10 text-zinc-300"
-                  : syncStatus === "file"
-                  ? "bg-white/5 border-white/10 text-zinc-400"
-                  : "bg-white/5 border-white/10 text-zinc-400"
-              }`} title={syncStatus === "cloud" ? "Data saves to the cloud (Upstash Redis) and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
-                {syncStatus === "cloud" ? "Cloud sync" : syncStatus === "file" ? "Server sync" : "Local only"}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {isAdmin ? (
-              <div className="relative flex items-center gap-2">
-                <a href="/admin" className="text-xs bg-white text-black px-3 py-1.5 rounded-lg font-medium hover:bg-zinc-200 transition-colors">
-                  Admin Panel
-                </a>
-                <span className="w-8 h-8 rounded-full bg-white/10 text-white text-xs font-medium flex items-center justify-center border border-white/10" title="Admin">
-                  A
-                </span>
-                <button onClick={() => { setShowChangePassword(true); setChangePasswordError(""); setChangePasswordSuccess(""); }} className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Change Password</button>
-                <button onClick={handleLogout} className="text-xs text-zinc-400 hover:text-white transition-colors">Logout</button>
-              </div>
-            ) : (
-              <button onClick={() => setShowLogin(true)} className="p-2 rounded-full hover:bg-white/5 transition-colors" title="Admin login" aria-label="Admin login">
-                <svg className="w-6 h-6 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        title="Study Planner"
+        onMenuClick={() => setShowSidebar(!showSidebar)}
+        right={
+          syncStatus !== "checking" ? (
+            <span className={`hidden lg:inline-flex text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap ${
+              syncStatus === "cloud" ? "bg-white/5 border-white/10 text-zinc-300" : "bg-white/5 border-white/10 text-zinc-400"
+            }`} title={syncStatus === "cloud" ? "Data saves to the cloud (Upstash Redis) and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
+              {syncStatus === "cloud" ? "Cloud sync" : syncStatus === "file" ? "Server sync" : "Local only"}
+            </span>
+          ) : null
+        }
+        admin={{
+          isAdmin,
+          onOpenAdmin: () => { window.location.href = "/admin"; },
+          onChangePassword: () => { setShowChangePassword(true); setChangePasswordError(""); setChangePasswordSuccess(""); },
+          onLogout: handleLogout,
+          onLogin: () => setShowLogin(true),
+        }}
+      />
 
       <div className="flex-1 flex max-w-7xl mx-auto w-full overflow-hidden">
         {showSidebar && (
