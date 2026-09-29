@@ -154,7 +154,7 @@ export default function PYQsPage() {
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <AppHeader title="PYQ Bank" />
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-8 pb-24">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">20 Years PYQ Bank</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">

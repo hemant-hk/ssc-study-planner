@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import AppHeader from "@/components/AppHeader";
 
 interface RosterTask {
@@ -79,6 +79,10 @@ export default function Roster() {
   });
   const [selected, setSelected] = useState(() => toDateKey(new Date()));
   const [taskText, setTaskText] = useState("");
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const todayBtnRef = useRef<HTMLButtonElement | null>(null);
+  // Scrolled once on mount so the strip opens on today instead of 7 days back.
+  const didAutoScroll = useRef(false);
 
   const dates: string[] = [];
   for (let i = -7; i < RANGE - 7; i++) {
@@ -90,12 +94,23 @@ export default function Roster() {
   const day = days.find((d) => d.date === selected) || { date: selected, tasks: [], closed: false, punishment: null, punishmentDone: false };
   const pct = percentage(day);
   const rating = evaluate(day, pct);
-  const isPast = selected < toDateKey(new Date());
-  const isToday = selected === toDateKey(new Date());
+  const todayKey = toDateKey(new Date());
+  const isPast = selected < todayKey;
+  const isToday = selected === todayKey;
 
   useEffect(() => {
     localStorage.setItem(ROSTER_KEY, JSON.stringify(days));
   }, [days]);
+
+  useEffect(() => {
+    if (didAutoScroll.current) return;
+    didAutoScroll.current = true;
+    const strip = stripRef.current;
+    const btn = todayBtnRef.current;
+    if (!strip || !btn) return;
+    // Center the active day inside the scrollable strip.
+    strip.scrollLeft = btn.offsetLeft - strip.clientWidth / 2 + btn.clientWidth / 2;
+  }, []);
 
   function upsertDay(updater: (day: RosterDay) => RosterDay) {
     const base = days.find((d) => d.date === selected) || { date: selected, tasks: [], closed: false, punishment: null, punishmentDone: false };
@@ -156,7 +171,7 @@ export default function Roster() {
   return (
     <div className="min-h-screen bg-black">
       <AppHeader title="Roster" />
-      <div className="max-w-3xl mx-auto p-4 md:p-8">
+      <div className="max-w-3xl mx-auto p-4 md:p-8 pb-24">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <p className="text-[11px] font-semibold text-zinc-400 tracking-widest uppercase mb-1">Daily Discipline System</p>
@@ -168,20 +183,32 @@ export default function Roster() {
           </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-6 -mx-4 px-4">
+        <div ref={stripRef} className="flex gap-2 overflow-x-auto pb-2 mb-6 -mx-4 px-4">
           {dates.map((key) => {
             const d = days.find((x) => x.date === key);
             const p = d ? percentage(d) : -1;
             const active = key === selected;
+            const isTodayKey = key === todayKey;
             const dateObj = new Date(key + "T00:00:00");
-            const label = key === toDateKey(new Date()) ? "Today" : dateObj.toLocaleDateString("en-IN", { weekday: "short", day: "numeric" });
+            const label = isTodayKey ? "Today" : dateObj.toLocaleDateString("en-IN", { weekday: "short", day: "numeric" });
             return (
-              <button key={key} onClick={() => setSelected(key)}
+              <button
+                key={key}
+                ref={isTodayKey ? todayBtnRef : undefined}
+                onClick={() => setSelected(key)}
+                aria-current={isTodayKey ? "date" : undefined}
                 className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl border whitespace-nowrap transition-colors ${
-                  active ? "bg-white text-black border-white" : "bg-[#0f0f11] border-zinc-800 text-zinc-300 hover:border-zinc-600"
+                  active
+                    ? "bg-white text-black border-white"
+                    : isTodayKey
+                      ? "bg-white/5 border-white/40 text-zinc-100"
+                      : "bg-[#0f0f11] border-zinc-800 text-zinc-300 hover:border-zinc-600"
                 }`}>
-                <span className="text-[11px] font-medium">{label}</span>
-                <span className={`text-[10px] font-semibold ${p >= 50 ? "text-emerald-400" : p >= 0 ? "text-amber-400" : "text-zinc-500"} ${active ? "text-black" : ""}`}>
+                <span className="text-[11px] font-medium flex items-center gap-1">
+                  {isTodayKey && !active && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  {label}
+                </span>
+                <span className={`text-[10px] font-semibold ${active ? "text-black" : p >= 50 ? "text-emerald-400" : p >= 0 ? "text-amber-400" : "text-zinc-500"}`}>
                   {p >= 0 ? `${p}%` : "—"}
                 </span>
               </button>
