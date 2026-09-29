@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 
 export interface DashUser {
   id: string;
@@ -202,19 +203,17 @@ export default function DashboardClient({ user }: { user?: DashUser }) {
 
   return (
     <div className="min-h-screen bg-black">
-      <header className="sticky top-0 border-b border-zinc-800 bg-black/90 backdrop-blur z-20">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-sm font-semibold text-white">
-            <span className="text-zinc-400 hover:text-white transition-colors">← Study Planner</span>
-          </Link>
+      <AppHeader
+        title="Dashboard"
+        right={
           <button
             onClick={handleLogout}
             className="text-xs text-zinc-400 hover:text-white transition-colors border border-zinc-800 hover:border-zinc-600 px-3 py-1.5 rounded-lg"
           >
             Logout
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <main className="max-w-5xl mx-auto px-4 py-6 md:py-8">
         {/* Profile & Goal header */}

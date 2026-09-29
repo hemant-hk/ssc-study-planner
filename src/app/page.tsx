@@ -105,6 +105,7 @@ export default function Home() {
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeChapter, setActiveChapter] = useState<number | null>(null);
   const [activePredictedTopic, setActivePredictedTopic] = useState<number | null>(null);
+  const [activeImportantNote, setActiveImportantNote] = useState<number | null>(null);
   const [generatingTopicDetail, setGeneratingTopicDetail] = useState<string | null>(null);
   const [addingToSubject, setAddingToSubject] = useState<string | null>(null);
   const [playlistProgress, setPlaylistProgress] = useState<{ current: number; total: number; title: string } | null>(null);
@@ -696,26 +697,6 @@ export default function Home() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-3">
-              <a href="/pyqs" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-                PYQ Bank
-              </a>
-              <a href="/notes" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-                My Notes
-              </a>
-              <a href="/mock-test" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-                Mock Tests
-              </a>
-              <a href="/notice" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-                Notices
-              </a>
-              <a href="/roster" className="text-sm bg-zinc-900 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-                Roster
-              </a>
-              <span className="text-xs bg-white/5 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full whitespace-nowrap">
-                {subjects.length} subjects · {subjects.reduce((a, s) => a + s.videos.length, 0)} videos
-              </span>
-            </div>
             {isAdmin ? (
               <div className="relative flex items-center gap-2">
                 <a href="/admin" className="text-xs bg-white text-black px-3 py-1.5 rounded-lg font-medium hover:bg-zinc-200 transition-colors">
@@ -981,7 +962,7 @@ export default function Home() {
                           <svg className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className={`font-medium text-sm truncate ${isDone ? "line-through text-zinc-500" : "text-zinc-50"}`}>{meta.topic}</h3>
+                          <h3 className={`font-medium text-sm line-clamp-2 ${isDone ? "line-through text-zinc-500" : "text-zinc-50"}`}>{meta.topic}</h3>
                           <p className="text-xs text-zinc-400 truncate mt-0.5">{meta.subtitle}</p>
                           {generatingPlan === video.videoId ? (
                             <div className="flex items-center gap-2 mt-2">
@@ -992,7 +973,9 @@ export default function Home() {
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               <span className="text-[11px] bg-zinc-900 border border-white/10 text-zinc-400 px-2 py-0.5 rounded-full">{video.studyPlan.difficulty}</span>
                               <span className="text-[11px] bg-zinc-900 border border-white/10 text-zinc-400 px-2 py-0.5 rounded-full">{video.studyPlan.estimatedStudyTime}</span>
-                              <span className="text-[11px] text-zinc-400">{video.studyPlan.quiz?.length || 0} quiz questions</span>
+                              {video.studyPlan.quiz && video.studyPlan.quiz.length > 0 && (
+                                <span className="text-[11px] text-zinc-400">{video.studyPlan.quiz.length} quiz questions</span>
+                              )}
                             </div>
                           ) : null}
                         </div>
@@ -1035,7 +1018,9 @@ export default function Home() {
                 <div className="flex flex-wrap gap-2 mt-2">
                   <span className="text-xs bg-zinc-900 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full">{activeVideo.studyPlan.difficulty}</span>
                   <span className="text-xs bg-zinc-900 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full">{activeVideo.studyPlan.estimatedStudyTime}</span>
-                  <span className="text-xs bg-zinc-900 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full">{activeVideo.studyPlan.quiz?.length || 0} quiz questions</span>
+                  {activeVideo.studyPlan.quiz && activeVideo.studyPlan.quiz.length > 0 && (
+                    <span className="text-xs bg-zinc-900 border border-white/10 text-zinc-400 px-2.5 py-1 rounded-full">{activeVideo.studyPlan.quiz.length} quiz questions</span>
+                  )}
                 </div>
               </div>
 
@@ -1140,17 +1125,26 @@ export default function Home() {
                         <span className="text-[11px] text-zinc-400">{activeVideo.studyPlan.lastYearNotes.length}</span>
                       </div>
                       <ul className="divide-y divide-zinc-800/60">
-                        {activeVideo.studyPlan.lastYearNotes.map((note, i) => (
-                          <li key={i} className="py-3 first:pt-0 last:pb-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="text-sm font-semibold text-zinc-100 flex-1 truncate">{note.topic}</p>
-                              <span className="text-[10px] text-zinc-400 whitespace-nowrap">{note.frequency}</span>
-                              <NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={`${note.topic}: ${note.notes}`} title="Save note" />
-                            </div>
-                            <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">{note.notes}</p>
-                            <div className="flex flex-wrap gap-1 mt-1.5">{(note.exams || []).map((exam, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">{exam}</span>)}</div>
-                          </li>
-                        ))}
+                        {activeVideo.studyPlan.lastYearNotes.map((note, i) => {
+                          const expanded = activeImportantNote === i;
+                          return (
+                            <li key={i} className="py-3 first:pt-0 last:pb-0">
+                              <div onClick={() => setActiveImportantNote(expanded ? null : i)} className="flex items-center gap-2 cursor-pointer select-none">
+                                <p className="text-sm font-semibold text-zinc-100 flex-1 line-clamp-2">{note.topic}</p>
+                                <span className="text-[10px] text-zinc-400 whitespace-nowrap flex-shrink-0">{note.frequency}</span>
+                                <svg className={`w-4 h-4 text-zinc-500 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                              </div>
+                              {expanded && (
+                                <>
+                                  <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap mt-1.5">{note.notes}</p>
+                                  <div className="flex flex-wrap items-center gap-1 mt-1.5">{(note.exams || []).map((exam, j) => <span key={j} className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">{exam}</span>)}
+                                    <NotesButton subject={activeSubject.name} topic={videoMeta?.topic || activeVideo.title} videoId={activeVideo.videoId} contentType="revision" content={`${note.topic}: ${note.notes}`} title="Save note" />
+                                  </div>
+                                </>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     </section>
                   )}
@@ -1168,7 +1162,7 @@ export default function Home() {
                             <li key={i} className="py-2 first:pt-0 last:pb-0">
                               <div onClick={() => setActivePredictedTopic(activePredictedTopic === i ? null : i)} className="flex items-center gap-3 py-2.5 -my-1 cursor-pointer rounded-lg hover:bg-white/[0.03] transition-colors">
                                 <span className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${probClass}`}>{topic.probability}</span>
-                                <span className="text-sm font-medium text-zinc-200 flex-1 truncate">{topic.topic}</span>
+                                <span className="text-sm font-medium text-zinc-200 flex-1 line-clamp-2">{topic.topic}</span>
                                 <svg className={`w-4 h-4 text-zinc-500 transition-transform ${activePredictedTopic === i ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                               </div>
                               {activePredictedTopic === i && (
@@ -1402,7 +1396,7 @@ function getChapterSeconds(timestamp: string): number {
 
 // Parse repetitive title boilerplate into a clean topic + subtitle. Examples:
 //   "GK FOR SSC EXAMS 2025 | FRB 2.0 | GEOGRAPHY | SOLAR SYSTEM"
-//     -> topic "Solar System", subtitle "Parmar SSC • 30 mins"
+//     -> topic "Solar System", subtitle "Parmar SSC"
 //   "GEOGRAPHY FOR SSC EXAMS 2025 | EARTH INTERIOR | FRB 2.0"
 //     -> topic "Earth Interior"
 //   "HISTORY FOR SSC EXAMS 2025 | ADVENT OF EUROPEANS | FRB 2.0 BY PARMAR SSC"
@@ -1430,7 +1424,7 @@ function parseVideoTitle(title: string): { topic: string; author: string; subtit
   const author = /PARMAR/i.test(title)
     ? "Parmar SSC"
     : title.match(/BY\s+(.+)$/i)?.[1]?.trim() || "";
-  const subtitle = `${author || "SSC GK Series"} • 30 mins`;
+  const subtitle = `${author || "SSC GK Series"}`;
   return { topic: titleCase(topic), author, subtitle };
 }
 

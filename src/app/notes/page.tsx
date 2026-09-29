@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 import type { Note } from "@/lib/notes-types";
 import { showToast } from "@/lib/toast";
 
@@ -166,26 +166,7 @@ export default function NotesPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="flex items-center gap-2">
-              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
-              </svg>
-              <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Study Planner</h1>
-            </Link>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">
-              Home
-            </Link>
-            <a href="/mock-test" className="text-sm bg-zinc-900 dark:bg-zinc-800 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-              Mock Tests
-            </a>
-          </div>
-        </div>
-      </header>
+      <AppHeader title="My Notes" />
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-8">

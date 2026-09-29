@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
 import PYQCard from "@/components/PYQCard";
 import { showToast } from "@/lib/toast";
 import type { PYQ } from "@/lib/pyqs";
@@ -83,6 +83,7 @@ export default function PYQsPage() {
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [showTopicDropdown, setShowTopicDropdown] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const topics = useMemo(() => {
     const all = TOPICS_BY_SUBJECT[subject] || [];
@@ -151,31 +152,7 @@ export default function PYQsPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="flex items-center gap-2">
-              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
-              </svg>
-              <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Study Planner</h1>
-            </Link>
-            <span className="hidden sm:inline text-sm text-zinc-500 dark:text-zinc-400">·</span>
-            <span className="hidden sm:inline text-sm text-zinc-300 dark:text-zinc-300 font-medium">20Y PYQ Bank</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="/notes" className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">
-              My Notes
-            </Link>
-            <Link href="/" className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors">
-              Home
-            </Link>
-            <Link href="/mock-test" className="text-sm bg-zinc-900 dark:bg-zinc-800 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors">
-              Mock Tests
-            </Link>
-          </div>
-        </div>
-      </header>
+      <AppHeader title="PYQ Bank" />
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
@@ -203,99 +180,108 @@ export default function PYQsPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-end gap-3 mb-6">
-          <div className="relative">
-            <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Topic</label>
-            <input
-              type="text"
-              value={topicSearch}
-              onChange={(e) => { setTopicSearch(e.target.value); setShowTopicDropdown(true); }}
-              onFocus={() => setShowTopicDropdown(true)}
-              onBlur={() => setTimeout(() => setShowTopicDropdown(false), 150)}
-              placeholder="Search / select topic…"
-              className="w-56 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm placeholder-zinc-400 outline-none focus:border-white/50"
-            />
-            {showTopicDropdown && topics.length > 0 && (
-              <div className="absolute z-20 mt-1 w-56 max-h-56 overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg">
-                {topic === "" && (
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showFilters
+                ? "bg-white text-black border border-white"
+                : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 hover:border-white/50"
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filters
+            <svg className={`w-4 h-4 transition-transform ${showFilters ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+          </button>
+          {(topic || yearRange !== "all" || tier !== "All Tiers") && (
+            <button
+              onClick={() => { setTopic(""); setTopicSearch(""); setYearRange("all"); setTier("All Tiers"); }}
+              className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline underline-offset-2"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+
+        {showFilters && (
+          <div className="flex items-end gap-3 overflow-x-auto pb-1 mb-5">
+            <div className="relative flex-shrink-0">
+              <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Topic</label>
+              <input
+                type="text"
+                value={topicSearch}
+                onChange={(e) => { setTopicSearch(e.target.value); setShowTopicDropdown(true); }}
+                onFocus={() => setShowTopicDropdown(true)}
+                onBlur={() => setTimeout(() => setShowTopicDropdown(false), 150)}
+                placeholder="Search / select topic…"
+                className="w-56 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm placeholder-zinc-400 outline-none focus:border-white/50"
+              />
+              {showTopicDropdown && topics.length > 0 && (
+                <div className="absolute z-20 mt-1 w-56 max-h-56 overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg">
+                  {topic === "" && (
+                    <button
+                      onMouseDown={() => { setTopic(""); setTopicSearch(""); setShowTopicDropdown(false); }}
+                      className="w-full text-left px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      All topics
+                    </button>
+                  )}
+                  {topics.map((t) => (
+                    <button
+                      key={t}
+                      onMouseDown={() => { setTopic(t); setTopicSearch(t); setShowTopicDropdown(false); }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
+                        topic === t ? "text-zinc-900 dark:text-zinc-50 font-medium" : "text-zinc-700 dark:text-zinc-300"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-shrink-0">
+              <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Year</label>
+              <div className="flex gap-1">
+                {YEAR_RANGES.map((y) => (
                   <button
-                    onMouseDown={() => { setTopic(""); setTopicSearch(""); setShowTopicDropdown(false); }}
-                    className="w-full text-left px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    key={y.value}
+                    onClick={() => setYearRange(y.value)}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                      yearRange === y.value
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
+                        : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
+                    }`}
                   >
-                    All topics
+                    {y.label}
                   </button>
-                )}
-                {topics.map((t) => (
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-shrink-0">
+              <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Tier</label>
+              <div className="flex gap-1">
+                {TIERS.map((t) => (
                   <button
                     key={t}
-                    onMouseDown={() => { setTopic(t); setTopicSearch(t); setShowTopicDropdown(false); }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
-                      topic === t ? "text-zinc-900 dark:text-zinc-50 font-medium" : "text-zinc-700 dark:text-zinc-300"
+                    onClick={() => setTier(t)}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                      tier === t
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
+                        : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
                     }`}
                   >
                     {t}
                   </button>
                 ))}
               </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Year Range</label>
-            <div className="flex gap-1">
-              {YEAR_RANGES.map((y) => (
-                <button
-                  key={y.value}
-                  onClick={() => setYearRange(y.value)}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                    yearRange === y.value
-                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
-                      : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
-                  }`}
-                >
-                  {y.label}
-                </button>
-              ))}
             </div>
           </div>
-
-          <div>
-            <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Tier</label>
-            <div className="flex gap-1">
-              {TIERS.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTier(t)}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                    tier === t
-                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
-                      : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button
-            onClick={generateMore}
-            disabled={generating}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 disabled:opacity-50 transition-colors self-end"
-          >
-            {generating ? (
-              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            )}
-            {generating ? "Generating PYQs…" : "Generate More PYQs"}
-          </button>
-        </div>
+        )}
 
         {error && (
           <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm mb-4">
@@ -345,6 +331,33 @@ export default function PYQsPage() {
             {pyqs.map((pyq) => (
               <PYQCard key={pyq.id} pyq={pyq} />
             ))}
+          </div>
+        )}
+
+        {!loading && !error && pyqs.length > 0 && (
+          <div className="flex justify-center mt-8">
+            <button
+              onClick={generateMore}
+              disabled={generating}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 disabled:opacity-50 transition-colors"
+            >
+              {generating ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Generating PYQs…
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Generate More PYQs
+                </>
+              )}
+            </button>
           </div>
         )}
       </main>
