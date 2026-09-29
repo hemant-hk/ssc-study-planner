@@ -6,7 +6,7 @@ import Link from "next/link";
 
 const NAV_ITEMS: { href: string; label: string; icon: ReactNode }[] = [
   {
-    href: "/",
+    href: "/study",
     label: "Home",
     icon: (
       <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -15,7 +15,7 @@ const NAV_ITEMS: { href: string; label: string; icon: ReactNode }[] = [
     ),
   },
   {
-    href: "/dashboard",
+    href: "/",
     label: "Dashboard",
     icon: (
       <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

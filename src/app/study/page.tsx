@@ -715,15 +715,28 @@ export default function Home() {
     <div className="flex flex-col flex-1 bg-black font-sans">
       <AppHeader
         title="Study Planner"
-        onMenuClick={() => setShowSidebar(!showSidebar)}
         right={
-          syncStatus !== "checking" ? (
-            <span className={`hidden lg:inline-flex text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap ${
-              syncStatus === "cloud" ? "bg-white/5 border-white/10 text-zinc-300" : "bg-white/5 border-white/10 text-zinc-400"
-            }`} title={syncStatus === "cloud" ? "Data saves to the cloud (Upstash Redis) and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
-              {syncStatus === "cloud" ? "Cloud sync" : syncStatus === "file" ? "Server sync" : "Local only"}
-            </span>
-          ) : null
+          <>
+            <button
+              onClick={() => setShowSidebar((v) => !v)}
+              className="lg:hidden inline-flex items-center gap-1.5 text-xs border border-white/10 bg-white/5 text-zinc-200 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
+              title="Browse subjects"
+              aria-label="Browse subjects"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              Subjects
+            </button>
+            {syncStatus !== "checking" ? (
+              <span className={`hidden lg:inline-flex text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap ${
+                syncStatus === "cloud" ? "bg-white/5 border-white/10 text-zinc-300" : "bg-white/5 border-white/10 text-zinc-400"
+              }`} title={syncStatus === "cloud" ? "Data saves to the cloud (Upstash Redis) and syncs across every device" : syncStatus === "file" ? "Data is saved on this server and syncs across devices using it, plus a copy on this browser" : "Data is saved only in this browser"}>
+                {syncStatus === "cloud" ? "Cloud sync" : syncStatus === "file" ? "Server sync" : "Local only"}
+              </span>
+            ) : null
+            }
+          </>
         }
         admin={{
           isAdmin,
@@ -736,9 +749,9 @@ export default function Home() {
 
       <div className="flex-1 flex max-w-7xl mx-auto w-full overflow-hidden">
         {showSidebar && (
-          <>
-            <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setShowSidebar(false)} />
-            <aside className="fixed lg:static inset-y-0 left-0 z-50 w-64 border-r border-white/10 bg-black flex flex-col flex-shrink-0">
+          <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setShowSidebar(false)} />
+        )}
+        <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 border-r border-white/10 bg-black flex flex-col flex-shrink-0 ${showSidebar ? "" : "hidden lg:flex"}`}>
               <div className="p-4">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Subjects</h2>
@@ -784,6 +797,10 @@ export default function Home() {
             <div className="px-4 pb-6 pt-4 border-t border-white/10">
               <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">Library</h3>
               <div className="space-y-1">
+                <a href="/" onClick={() => setShowSidebar(false)} className="flex items-center gap-2.5 p-2.5 rounded-lg text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
+                  <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                  Dashboard
+                </a>
                 <a href="/pyqs" onClick={() => setShowSidebar(false)} className="flex items-center gap-2.5 p-2.5 rounded-lg text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors">
                   <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
                   PYQ Bank
@@ -820,8 +837,6 @@ export default function Home() {
               </div>
             </div>
         </aside>
-        </>
-        )}
 
         <main className="flex-1 overflow-y-auto">
           {!activeSubject ? (
