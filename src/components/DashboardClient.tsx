@@ -217,6 +217,8 @@ export default function DashboardClient({ user }: { user?: DashUser }) {
 
       <main className="max-w-5xl mx-auto px-4 py-6 md:py-8">
         {/* Profile & Goal header */}
+        <h1 className="text-2xl font-bold text-white tracking-tight mb-4">Dashboard</h1>
+
         <section className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-5 md:p-6 mb-6">
           <div className="flex flex-wrap items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-white text-black text-lg font-bold flex items-center justify-center flex-shrink-0">

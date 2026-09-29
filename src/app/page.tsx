@@ -828,20 +828,20 @@ export default function Home() {
             <div className="min-h-full p-4 md:p-8 max-w-3xl mx-auto w-full">
               {error && <div className="mb-6 rounded-xl border border-red-900/40 bg-red-950/40 px-4 py-3 text-red-300 text-sm">{error}</div>}
 
-              <div className="flex items-start justify-between gap-4 flex-wrap mb-8">
+              <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
                 <div>
-                  <p className="font-mono text-3xl md:text-4xl font-semibold tracking-tight text-white tabular-nums">{timeString}</p>
-                  <p className="text-sm text-zinc-400 tracking-wide mt-1.5">{dateString}</p>
+                  <p className="font-mono text-xl md:text-2xl font-semibold tracking-tight text-white tabular-nums">{timeString}</p>
+                  <p className="text-xs text-zinc-400 tracking-wide mt-0.5">{dateString}</p>
                 </div>
-                <span className="bg-zinc-900 border border-zinc-800 text-xs px-2.5 py-1 rounded-full text-zinc-300 whitespace-nowrap">
+                <span className="bg-zinc-900 border border-zinc-800 text-[11px] px-2 py-0.5 rounded-full text-zinc-300 whitespace-nowrap">
                   Target: SSC Examination
                 </span>
               </div>
 
-              <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-6 relative overflow-hidden mb-8">
-                <p className="text-[11px] font-semibold text-zinc-400 tracking-widest uppercase mb-2">Daily Focus</p>
-                <blockquote className="text-base md:text-lg font-medium text-zinc-200 italic leading-relaxed">“{dailyQuote}”</blockquote>
-                <p className="text-xs text-zinc-400 mt-3">— SSC Mindset</p>
+              <div className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3.5 relative overflow-hidden mb-4">
+                <p className="text-[10px] font-semibold text-zinc-400 tracking-widest uppercase mb-1">Daily Focus</p>
+                <blockquote className="text-sm md:text-base font-medium text-zinc-200 italic leading-relaxed">“{dailyQuote}”</blockquote>
+                <p className="text-[11px] text-zinc-400 mt-1.5">— SSC Mindset</p>
               </div>
 
               <section>

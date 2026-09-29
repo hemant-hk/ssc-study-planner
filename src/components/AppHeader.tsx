@@ -108,8 +108,10 @@ const ADMIN_ITEMS: { key: "admin" | "password" | "logout"; label: string; icon: 
   },
 ];
 
+// `title` is still accepted so existing callers keep working, but it is
+// intentionally not rendered: the navbar brand is always "[Logo] Study
+// Planner", and each page renders its own heading inside the page body.
 export default function AppHeader({
-  title,
   right,
   admin,
   onMenuClick,
@@ -156,7 +158,6 @@ export default function AppHeader({
                 <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
               </svg>
               <span className="hidden sm:inline text-lg font-semibold tracking-tight text-white truncate">Study Planner</span>
-              {title && <span className="text-sm font-semibold tracking-tight text-white truncate sm:text-zinc-400 sm:font-normal">{title}</span>}
             </Link>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
@@ -200,7 +201,7 @@ export default function AppHeader({
               {admin && menuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-52 rounded-xl border border-white/10 bg-[#0f0f11] shadow-xl z-50 overflow-hidden">
+                  <div className="fixed right-4 top-14 w-52 rounded-xl border border-white/10 bg-[#0f0f11] shadow-xl z-50 overflow-hidden">
                     {admin.isAdmin ? (
                       ADMIN_ITEMS.map((item) => (
                         <button
