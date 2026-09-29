@@ -14,7 +14,7 @@ const SUBJECT_COLOR: Record<string, string> = {
 
 export default function PYQCard({ pyq }: { pyq: PYQ }) {
   const [selected, setSelected] = useState<number | null>(null);
-  const [showSolution, setShowSolution] = useState(false);
+  const [showAnswer, setShowAnswer] = useState(false);
   const [askingDoubt, setAskingDoubt] = useState(false);
   const [doubtAnswer, setDoubtAnswer] = useState("");
   const [doubtLoading, setDoubtLoading] = useState(false);
@@ -150,28 +150,7 @@ export default function PYQCard({ pyq }: { pyq: PYQ }) {
         })}
       </div>
 
-      {selected !== null && (
-        <button
-          onClick={() => setShowSolution((v) => !v)}
-          className="self-start flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showSolution ? "M19 9l-7 7-7-7" : "M9 5l7 7-7 7"} />
-          </svg>
-          {showSolution ? "Hide" : "View"} Solution & Short Trick
-        </button>
-      )}
-
-      {selected !== null && showSolution && (
-        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
-          <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">
-            Correct Answer: {String.fromCharCode(65 + pyq.answerIndex)}. {pyq.options[pyq.answerIndex]}
-          </p>
-          <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">{pyq.explanation}</p>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex items-center gap-2 pt-1 flex-wrap">
         <button
           onClick={askDoubt}
           disabled={doubtLoading}
@@ -194,12 +173,31 @@ export default function PYQCard({ pyq }: { pyq: PYQ }) {
             </>
           )}
         </button>
+        <button
+          onClick={() => setShowAnswer((v) => !v)}
+          aria-expanded={showAnswer}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showAnswer ? "M19 9l-7 7-7-7" : "M9 5l7 7-7 7"} />
+          </svg>
+          {showAnswer ? "Hide Answer & Explanation" : "View Answer & Explanation"}
+        </button>
         {askingDoubt && !doubtLoading && doubtAnswer && (
           <button onClick={() => { setAskingDoubt(false); setDoubtAnswer(""); setDoubtError(""); }} className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
             Close
           </button>
         )}
       </div>
+
+      {showAnswer && (
+        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+          <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">
+            Correct Answer: {String.fromCharCode(65 + pyq.answerIndex)}. {pyq.options[pyq.answerIndex]}
+          </p>
+          <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">{pyq.explanation}</p>
+        </div>
+      )}
 
       {doubtError && !doubtAnswer && (
         <div className="text-xs text-red-500 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950">{doubtError}</div>

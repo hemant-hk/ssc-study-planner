@@ -6,7 +6,7 @@ import Link from "next/link";
 
 const NAV_ITEMS: { href: string; label: string; icon: ReactNode }[] = [
   {
-    href: "/",
+    href: "/study",
     label: "Home",
     icon: (
       <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -15,7 +15,7 @@ const NAV_ITEMS: { href: string; label: string; icon: ReactNode }[] = [
     ),
   },
   {
-    href: "/dashboard",
+    href: "/",
     label: "Dashboard",
     icon: (
       <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,8 +108,10 @@ const ADMIN_ITEMS: { key: "admin" | "password" | "logout"; label: string; icon: 
   },
 ];
 
+// `title` is still accepted so existing callers keep working, but it is
+// intentionally not rendered: the navbar brand is always "[Logo] Study
+// Planner", and each page renders its own heading inside the page body.
 export default function AppHeader({
-  title,
   right,
   admin,
   onMenuClick,
@@ -152,11 +154,14 @@ export default function AppHeader({
               </svg>
             </button>
             <Link href="/" className="flex items-center gap-2 min-w-0">
-              <svg className="w-7 h-7 text-white flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
-              </svg>
-              <span className="hidden sm:inline text-lg font-semibold tracking-tight text-white truncate">Study Planner</span>
-              {title && <span className="text-sm font-semibold tracking-tight text-white truncate sm:text-zinc-400 sm:font-normal">{title}</span>}
+              <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg p-1.5 flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="9" />
+                  <circle cx="12" cy="12" r="5" />
+                  <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+                </svg>
+              </span>
+              <span className="hidden sm:inline text-lg font-bold tracking-tight text-white truncate">Study Planner</span>
             </Link>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
@@ -200,7 +205,7 @@ export default function AppHeader({
               {admin && menuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-52 rounded-xl border border-white/10 bg-[#0f0f11] shadow-xl z-50 overflow-hidden">
+                  <div className="fixed right-4 top-14 w-52 rounded-xl border border-white/10 bg-[#0f0f11] shadow-xl z-50 overflow-hidden">
                     {admin.isAdmin ? (
                       ADMIN_ITEMS.map((item) => (
                         <button
@@ -235,10 +240,14 @@ export default function AppHeader({
           <aside className="fixed inset-y-0 left-0 z-50 w-72 border-r border-white/10 bg-black flex flex-col">
             <div className="flex items-center justify-between px-4 h-16 border-b border-white/10">
               <div className="flex items-center gap-2">
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
-                </svg>
-                <span className="text-sm font-semibold text-white">Study Planner</span>
+                <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg p-1.5 flex-shrink-0">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" />
+                    <circle cx="12" cy="12" r="5" />
+                    <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+                  </svg>
+                </span>
+                <span className="text-sm font-bold tracking-tight text-white">Study Planner</span>
               </div>
               <button onClick={() => setOpen(false)} className="p-2 rounded-lg hover:bg-white/5 transition-colors" aria-label="Close menu">
                 <svg className="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

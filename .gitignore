@@ -48,3 +48,4 @@ next-env.d.ts
 /data/notes.json
 /data/discussions.json
 /data/admin-password.json
+/data/students.json

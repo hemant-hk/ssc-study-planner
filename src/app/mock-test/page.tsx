@@ -145,7 +145,7 @@ export default function MockTest() {
       <div className="min-h-screen bg-zinc-50 dark:bg-black">
         <AppHeader title="Mock Tests" />
         <p className="max-w-4xl mx-auto px-6 pt-6 pb-0 text-sm text-zinc-400 hover:text-zinc-100 transition-colors">
-          <Link href="/">← Back to Study Planner</Link>
+          <Link href="/study">← Back to Study Planner</Link>
         </p>
         <div className="max-w-4xl mx-auto p-6 pb-24">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50 mb-2">Mock Tests</h1>
