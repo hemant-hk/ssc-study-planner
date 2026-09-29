@@ -14,21 +14,37 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const wantsAll = request.nextUrl.searchParams.get("all") === "1";
-  if (wantsAll) {
-    if (!(await isAdminRequest(request))) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const wantsAll = request.nextUrl.searchParams.get("all") === "1";
+    if (wantsAll) {
+      if (!(await isAdminRequest(request))) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      try {
+        return NextResponse.json({ students: await listStudents() });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        return NextResponse.json(
+          { error: "Failed to load students", detail: message },
+          { status: 500 }
+        );
+      }
     }
-    return NextResponse.json({ students: await listStudents() });
-  }
 
-  const { id, isNew } = resolveStudentId(request);
-  const existing = await getStudent(id);
-  return withStudentCookie(
-    NextResponse.json({ profile: existing ?? blankProfile(id), isNew: !existing }),
-    id,
-    isNew
-  );
+    const { id, isNew } = resolveStudentId(request);
+    const existing = await getStudent(id);
+    return withStudentCookie(
+      NextResponse.json({ profile: existing ?? blankProfile(id), isNew: !existing }),
+      id,
+      isNew
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json(
+      { error: "Failed to load profile", detail: message },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PUT(request: NextRequest) {
@@ -39,14 +55,22 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { id, isNew } = resolveStudentId(request);
-  const existing = await getStudent(id);
-  const input = normalizeProfileInput(id, body);
-  const record = await saveStudent({
-    ...input,
-    // Role is never client-writable; keep the stored value.
-    role: existing?.role ?? "student",
-  });
+  try {
+    const { id, isNew } = resolveStudentId(request);
+    const existing = await getStudent(id);
+    const input = normalizeProfileInput(id, body);
+    const record = await saveStudent({
+      ...input,
+      // Role is never client-writable; keep the stored value.
+      role: existing?.role ?? "student",
+    });
 
-  return withStudentCookie(NextResponse.json({ profile: record }), id, isNew);
+    return withStudentCookie(NextResponse.json({ profile: record }), id, isNew);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json(
+      { error: "Failed to save profile", detail: message },
+      { status: 500 }
+    );
+  }
 }
