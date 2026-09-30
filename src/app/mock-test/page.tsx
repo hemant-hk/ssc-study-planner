@@ -85,7 +85,7 @@ export default function MockTest() {
       if (testType === "full") {
         setSectionTimeLeft((prev) => {
           if (prev <= 1) {
-            if (currentSection < 3) { nextSection(); return 15 * 60; }
+            if (currentSection < sections.length - 1) { nextSection(); return 15 * 60; }
             return 0;
           }
           return prev - 1;
@@ -95,13 +95,26 @@ export default function MockTest() {
     return () => clearInterval(timer);
   }, [testStarted, mode, testType, currentSection]);
 
+  // A section can come back empty when the AI is rate limited. Skip straight
+  // to the next section that actually has questions so the test never stalls.
+  useEffect(() => {
+    if (mode !== "running" || testType !== "full") return;
+    if ((sections[currentSection]?.questions || []).length > 0) return;
+    const next = sections.findIndex((s, i) => i > currentSection && s.questions.length > 0);
+    if (next >= 0) {
+      setCurrentSection(next);
+      setCurrentQuestion(0);
+      setSectionTimeLeft(15 * 60);
+    }
+  }, [mode, testType, sections, currentSection]);
+
   function submitTest() {
     setTestStarted(false);
     setMode("result");
   }
 
   function nextSection() {
-    if (currentSection < 3) {
+    if (currentSection < sections.length - 1) {
       setCurrentSection((prev) => prev + 1);
       setCurrentQuestion(0);
       setSectionTimeLeft(15 * 60);
@@ -206,10 +219,49 @@ export default function MockTest() {
   if (mode === "running") {
     const qs = getCurrentQuestions();
     const q = qs[currentQuestion];
-    if (!q) return <div className="min-h-screen flex items-center justify-center"><p>Loading questions...</p></div>;
+    const available = testType === "full"
+      ? sections.reduce((a, s) => a + s.questions.length, 0)
+      : questions.length;
+
+    // The current question is missing either because the whole test came back
+    // empty (AI rate limited) or because the user reached the end of this
+    // section. Show a real, actionable state instead of a spinner that never
+    // resolves.
+    if (!q) {
+      const isLast = testType !== "full" || currentSection >= sections.length - 1;
+      return (
+        <div className="min-h-screen bg-zinc-50 dark:bg-black flex items-center justify-center px-6">
+          <div className="max-w-md text-center space-y-4">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+              {available === 0 ? "No questions could be generated" : "Section complete"}
+            </h2>
+            <p className="text-sm text-zinc-400">
+              {available === 0
+                ? "The AI is rate limited right now. Please try again in a moment."
+                : testType === "full"
+                  ? `You reached the end of ${sections[currentSection]?.name || "this section"}.`
+                  : "You reached the end of this test."}
+            </p>
+            <div className="flex gap-3 justify-center flex-wrap">
+              {testType === "full" && !isLast && (
+                <button onClick={nextSection} className="px-5 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-black dark:text-zinc-100 rounded-lg font-medium">
+                  Next Section →
+                </button>
+              )}
+              <button onClick={submitTest} className="px-5 py-2.5 bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg font-medium">
+                Submit Test
+              </button>
+              <button onClick={() => { setMode("menu"); setTestStarted(false); }} className="px-5 py-2.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg font-medium">
+                Back to Menu
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     const selected = getAnswer(currentQuestion);
-    const totalQ = testType === "full" ? 100 : 25;
+    const totalQ = available;
     const answeredCount = Object.keys(answers).length;
 
     return (
@@ -268,8 +320,8 @@ export default function MockTest() {
             </div>
             <button onClick={() => {
               if (currentQuestion < qs.length - 1) setCurrentQuestion((p) => p + 1);
-              else if (testType === "full" && currentSection < 3) nextSection();
-            }} disabled={currentQuestion >= qs.length - 1 && (testType !== "full" || currentSection >= 3)}
+              else if (testType === "full" && currentSection < sections.length - 1) nextSection();
+            }} disabled={currentQuestion >= qs.length - 1 && (testType !== "full" || currentSection >= sections.length - 1)}
               className="px-4 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-sm disabled:opacity-50">Next →</button>
           </div>
         </div>
@@ -285,7 +337,8 @@ export default function MockTest() {
     const totalQ = results.reduce((a, r) => a + r.total, 0);
     const score = totalCorrect * 2 - totalWrong * 0.5;
     const maxScore = totalQ * 2;
-    const percentage = Math.round((totalCorrect / totalQ) * 100);
+    // Guard against a test that came back with no questions (rate limited).
+    const percentage = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 100) : 0;
 
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-black">
