@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/";
 
@@ -35,16 +34,17 @@ function LoginForm() {
           setSubmitting(false);
           return;
         }
-        // Only navigate to an internal path (never to an external redirect).
+        // Full page navigation (not client router): the freshly set cookie is
+        // sent with this doc request, and we bypass any stale RSC/route cache
+        // the client router may have prefetched while still logged out.
         const destination = next.startsWith("/") && !next.startsWith("//") ? next : "/";
-        router.replace(destination);
-        router.refresh();
+        window.location.replace(destination);
       } catch {
         setError("Network error. Please try again.");
         setSubmitting(false);
       }
     },
-    [passcode, submitting, next, router]
+    [passcode, submitting, next]
   );
 
   return (
