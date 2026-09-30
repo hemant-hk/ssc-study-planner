@@ -7,6 +7,9 @@ interface RosterTask {
   id: string;
   text: string;
   done: boolean;
+  planned: number;
+  spentSec: number;
+  startedAt: number | null;
 }
 
 interface RosterDay {
@@ -68,6 +71,24 @@ function evaluate(day: RosterDay, pct: number) {
 const ROSTER_KEY = "study-roster";
 const RANGE = 14;
 
+function formatMinutes(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+function formatDuration(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = Math.round(totalMinutes % 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function activeSeconds(task: RosterTask, now: number): number {
+  return (task.startedAt ? Math.max(0, now - task.startedAt) : 0) + (task.spentSec || 0);
+}
+
 export default function Roster() {
   const [days, setDays] = useState<RosterDay[]>(() => {
     if (typeof window === "undefined") return [];
@@ -79,6 +100,8 @@ export default function Roster() {
   });
   const [selected, setSelected] = useState(() => toDateKey(new Date()));
   const [taskText, setTaskText] = useState("");
+  const [taskMinutes, setTaskMinutes] = useState("60");
+  const [now, setNow] = useState(() => Date.now());
   const stripRef = useRef<HTMLDivElement | null>(null);
   const todayBtnRef = useRef<HTMLButtonElement | null>(null);
   // Scrolled once on mount so the strip opens on today instead of 7 days back.
@@ -102,6 +125,14 @@ export default function Roster() {
     localStorage.setItem(ROSTER_KEY, JSON.stringify(days));
   }, [days]);
 
+  // Tick once a second whenever any task's stopwatch is running.
+  useEffect(() => {
+    const running = days.some((d) => d.tasks.some((t) => t.startedAt != null));
+    if (!running) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [days]);
+
   useEffect(() => {
     if (didAutoScroll.current) return;
     didAutoScroll.current = true;
@@ -122,13 +153,43 @@ export default function Roster() {
   function addTask() {
     const text = taskText.trim();
     if (!text) return;
-    upsertDay((d) => ({ ...d, tasks: [...d.tasks, { id: Date.now().toString(), text, done: false }] }));
+    const parsed = parseInt(taskMinutes, 10);
+    const planned = isNaN(parsed) || parsed <= 0 ? 30 : parsed;
+    upsertDay((d) => ({
+      ...d,
+      tasks: [...d.tasks, { id: Date.now().toString(), text, done: false, planned, spentSec: 0, startedAt: null }],
+    }));
     setTaskText("");
   }
 
   function toggleTask(id: string) {
     if (day.closed) return;
-    upsertDay((d) => ((d.tasks = d.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t))), d));
+    upsertDay((d) => (
+      (d.tasks = d.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t))), d
+    ));
+  }
+
+  function startTask(id: string) {
+    if (day.closed) return;
+    upsertDay((d) => (
+      (d.tasks = d.tasks.map((t) => (t.id === id ? { ...t, startedAt: Date.now() } : t))), d
+    ));
+  }
+
+  function stopTask(id: string) {
+    upsertDay((d) => (
+      (d.tasks = d.tasks.map((t) =>
+        t.id === id && t.startedAt ? { ...t, spentSec: t.spentSec + Math.max(0, Date.now() - t.startedAt), startedAt: null } : t
+      )), d
+    ));
+  }
+
+  function updateTaskPlanned(id: string, minutes: number) {
+    if (day.closed) return;
+    const planned = isNaN(minutes) || minutes <= 0 ? 30 : Math.round(minutes);
+    upsertDay((d) => (
+      (d.tasks = d.tasks.map((t) => (t.id === id ? { ...t, planned } : t))), d
+    ));
   }
 
   function removeTask(id: string) {
@@ -223,6 +284,12 @@ export default function Roster() {
                 {new Date(selected + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               </h2>
               <p className="text-[11px] text-zinc-400 mt-0.5">{day.tasks.length} task{day.tasks.length === 1 ? "" : "s"} · {pct}% done</p>
+              {day.tasks.length > 0 && (
+                <p className="text-[11px] text-zinc-500 mt-0.5 tabular-nums">
+                  ⏱ {formatMinutes(day.tasks.reduce((a, t) => a + (t.planned || 0), 0))} planned ·{" "}
+                  {formatDuration(day.tasks.reduce((a, t) => a + activeSeconds(t, now), 0) / 60000)} studied
+                </p>
+              )}
             </div>
             {!day.closed && day.tasks.length > 0 && (isToday || isPast) && (
               <button onClick={closeDay} className="text-xs bg-white text-black px-3 py-1.5 rounded-lg font-semibold hover:bg-zinc-200 transition-colors">
@@ -248,20 +315,66 @@ export default function Roster() {
               <p className="text-sm text-zinc-400 text-center py-6">Koi task nahi. Niche plan banao — aaj ka ya aane wale din ka.</p>
             ) : (
               <div className="space-y-2 mb-5">
-                {day.tasks.map((task) => (
-                  <div key={task.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${task.done ? "border-zinc-800/60 bg-zinc-900/40" : "border-zinc-800 bg-black"}`}>
-                    <button onClick={() => toggleTask(task.id)} disabled={day.closed}
-                      className={`w-5 h-5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
-                        task.done ? "bg-emerald-500 border-emerald-500 text-black" : "border-zinc-600 hover:border-zinc-400"
-                      } ${day.closed ? "opacity-50 cursor-not-allowed" : ""}`}>
-                      {task.done && <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-                    </button>
-                    <span className={`flex-1 text-sm min-w-0 ${task.done ? "line-through text-zinc-500" : "text-zinc-200"}`}>{task.text}</span>
-                    <button onClick={() => removeTask(task.id)} disabled={day.closed} className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </div>
-                ))}
+                {day.tasks.map((task) => {
+                  const secs = activeSeconds(task, now);
+                  const running = task.startedAt != null;
+                  return (
+                    <div key={task.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors ${task.done ? "border-zinc-800/60 bg-zinc-900/40" : "border-zinc-800 bg-black"}`}>
+                      <button onClick={() => toggleTask(task.id)} disabled={day.closed}
+                        className={`w-5 h-5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                          task.done ? "bg-emerald-500 border-emerald-500 text-black" : "border-zinc-600 hover:border-zinc-400"
+                        } ${day.closed ? "opacity-50 cursor-not-allowed" : ""}`}>
+                        {task.done && <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`flex-1 text-sm min-w-0 truncate ${task.done ? "line-through text-zinc-500" : "text-zinc-200"}`}>{task.text}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="text-[10px] text-zinc-500 tabular-nums">🎯 {formatMinutes(task.planned)}</span>
+                          <span className="text-[10px] text-zinc-500">·</span>
+                          <span className={`text-[10px] tabular-nums ${running ? "text-emerald-400" : task.spentSec > 0 ? "text-zinc-300" : "text-zinc-600"}`}>
+                            ✓ {formatDuration(secs / 60000)}
+                          </span>
+                          {running ? (
+                            <button onClick={() => stopTask(task.id)} disabled={day.closed}
+                              className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded px-1.5 py-0.5 hover:bg-emerald-500/20 disabled:opacity-50">
+                              ■ Stop
+                            </button>
+                          ) : (
+                            task.spentSec > 0 ? (
+                              <button onClick={() => startTask(task.id)} disabled={day.closed}
+                                className="text-[10px] font-semibold text-zinc-300 bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 hover:bg-zinc-800 disabled:opacity-50">
+                                ▶ Resume
+                              </button>
+                            ) : (
+                              <button onClick={() => startTask(task.id)} disabled={day.closed}
+                                className="text-[10px] font-semibold text-zinc-300 bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 hover:bg-zinc-800 disabled:opacity-50">
+                                ▶ Start
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </div>
+
+                      <input
+                        type="number"
+                        min={5}
+                        step={5}
+                        defaultValue={task.planned}
+                        onChange={(e) => updateTaskPlanned(task.id, parseInt(e.target.value, 10))}
+                        disabled={day.closed}
+                        className={`w-16 flex-shrink-0 text-xs rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-zinc-200 text-right tabular-nums outline-none focus:border-zinc-500 ${day.closed ? "opacity-50" : ""}`}
+                        title="Planned minutes (edit karke {time} ghante me baad sakte ho)"
+                      />
+
+                      <button onClick={() => removeTask(task.id)} disabled={day.closed} className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -278,6 +391,17 @@ export default function Roster() {
                   onKeyDown={(e) => e.key === "Enter" && addTask()}
                   placeholder="e.g. History — Mughal Empire (2 revisions), 30 GK MCQs…"
                   className="flex-1 min-w-0 text-sm rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-500"
+                />
+                <input
+                  type="number"
+                  min={5}
+                  step={5}
+                  value={taskMinutes}
+                  onChange={(e) => setTaskMinutes(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addTask()}
+                  placeholder="min"
+                  className="w-16 text-sm rounded-xl border border-zinc-700 bg-black px-2 py-2.5 text-zinc-200 text-center tabular-nums outline-none focus:border-zinc-500"
+                  title="Planned minutes"
                 />
                 <button onClick={addTask} className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors">
                   + Add
@@ -333,6 +457,7 @@ export default function Roster() {
                           {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}
                         </p>
                         <p className={`text-[11px] ${r.tone}`}>{r.label}{d.punishment && !d.punishmentDone ? " · punishment pending" : ""}</p>
+                        <p className="text-[10px] text-zinc-500 tabular-nums">⏱ {formatMinutes(d.tasks.reduce((a, t) => a + (t.planned || 0), 0))} · ✓ {formatDuration(d.tasks.reduce((a, t) => a + activeSeconds(t, now), 0) / 60000)}</p>
                       </div>
                       <span className="text-xs font-semibold text-zinc-300 tabular-nums">{p}%</span>
                     </button>
