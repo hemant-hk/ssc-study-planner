@@ -136,6 +136,70 @@ function geminiBlockGenerator(apiKey: string, model: string, start: number): Blo
   };
 }
 
+// OpenAI and Anthropic have their own, far larger per-minute quotas than a free
+// Groq key, so adding either key to the pool multiplies real throughput instead
+// of just adding another key to the same rate-limited organization.
+function openaiBlockGenerator(apiKey: string, model: string, start: number): BlockGenerator {
+  return async (prompt, maxTokens) => {
+    const budget = Math.max(500, HARD_DEADLINE_MS - (Date.now() - start));
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_completion_tokens: maxTokens + REASONING_TOKEN_BONUS,
+        }),
+        signal: AbortSignal.timeout(budget),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      if (!content) return [];
+      return extractQuestions(content);
+    } catch {
+      return [];
+    }
+  };
+}
+
+function anthropicBlockGenerator(apiKey: string, model: string, start: number): BlockGenerator {
+  return async (prompt, maxTokens) => {
+    const budget = Math.max(500, HARD_DEADLINE_MS - (Date.now() - start));
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens + REASONING_TOKEN_BONUS,
+          temperature: 0.7,
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(budget),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const text = (Array.isArray(data.content) ? data.content : [])
+        .map((p: { text?: string }) => p?.text || "")
+        .join("");
+      if (!text) return [];
+      return extractQuestions(text);
+    } catch {
+      return [];
+    }
+  };
+}
+
 // Every configured provider/model, so the chunk pool can spread work across
 // them. Non-reasoning models come first: they answer a short chunk in a few
 // hundred ms and never blow the token budget on a hidden reasoning trace.
@@ -156,6 +220,18 @@ function buildGenerators(start: number): BlockGenerator[] {
       .split(",")[0]
       .trim();
     out.push(geminiBlockGenerator(geminiKey, model, start));
+  }
+  // OpenAI and Anthropic: independent, much larger quotas, so these are worth
+  // trying first when a key is present.
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey && !/^your_|^$/.test(openaiKey)) {
+    const model = (process.env.MOCK_OPENAI_MODELS || "gpt-4o-mini").split(",")[0].trim();
+    out.unshift(openaiBlockGenerator(openaiKey, model, start));
+  }
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey && !/^your_|^$/.test(anthropicKey)) {
+    const model = (process.env.MOCK_ANTHROPIC_MODEL || "claude-3-5-haiku-latest").split(",")[0].trim();
+    out.unshift(anthropicBlockGenerator(anthropicKey, model, start));
   }
   return out;
 }
