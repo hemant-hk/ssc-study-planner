@@ -13,14 +13,19 @@
 // data, and Gemini reads the page itself. pdf.js is still what turns the file
 // into page images, but it is no longer the thing trying to read the text.
 //
-// Pages are batched rather than sent as one document. A 100-question paper with
-// options and explanations is far larger than one response can hold, and a
-// single 20MB upload as base64 blows past the inline request limit besides.
+// This module handles ONE batch of pages per call and leaves the loop to the
+// caller. It used to drive the whole paper itself, which meant one serverless
+// function stayed open for the sum of every batch's model latency and died at
+// the gateway partway through. The browser now walks the plan that planBatches
+// returns, one short request per batch, which keeps every invocation well
+// inside the platform's execution ceiling and lets a single failed batch be
+// retried without redoing the ones that already worked.
 import { PDFParse } from "pdf-parse";
 import { AIProviderError, callGeminiSchema, type GeminiPart } from "./gemini";
 import {
   EXAM_SECTIONS,
-  type ExamShift,
+  type BatchExtraction,
+  type PageBatch,
   type ShiftDifficulty,
   type ShiftQuestion,
 } from "./exam-shifts-types";
@@ -38,10 +43,6 @@ const PAGE_IMAGE_WIDTH = 1400;
 // Each question now carries four options, an answer and an explanation, so a
 // batch costs far more output than the old question-only schema.
 const CHUNK_OUTPUT_TOKENS = 16000;
-
-// Gap between batches, to stay under the Gemini free tier's requests-per-minute
-// ceiling. Deliberately well clear of the limit rather than tuned against it.
-const INTER_CHUNK_DELAY_MS = 2000;
 
 // One retry, after a pause long enough for the per-minute window to roll over.
 // A 429 here is a rate limit, not a bad request, so it is the one error worth
@@ -64,36 +65,61 @@ const SUBJECT_TO_SECTION: Record<string, string> = {
 
 export const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
+export type { BatchExtraction, PageBatch };
+
 export interface ParsedShiftPage {
   num: number;
   /** PNG bytes of the rasterised page. */
   png: Uint8Array;
 }
 
-export interface ParsedShift {
-  shiftName: string;
-  examDate: string;
-  questions: ShiftQuestion[];
-  /** Pages whose text could not be read, e.g. a scanned image page. */
-  unreadablePages: number[];
-  /** How many page groups the paper was split into, for the admin's benefit. */
-  chunkCount: number;
-  /** Per-chunk failure detail, so a partial read is explainable. */
-  failedChunks: string[];
-}
-
-type ChunkResult =
-  | { ok: true; index: number; extraction: RawExtraction }
-  | { ok: false; index: number; pages: number[]; message: string };
+/** How many pages fit in one batch, exposed so the UI can show progress. */
+export const PAGES_PER_BATCH = PAGES_PER_CHUNK;
 
 /**
- * Rasterise every page of the PDF to PNG.
+ * Read a PDF's page count without rendering anything.
+ *
+ * Splitting a paper into batches needs the page count up front, and rendering
+ * pages only to learn how many there are would waste the whole point of
+ * splitting. `getInfo` is a metadata read: milliseconds, not seconds.
+ */
+export async function countPdfPages(buf: ArrayBuffer): Promise<number> {
+  const parser = new PDFParse({ data: new Uint8Array(buf) });
+  try {
+    const info = await parser.getInfo();
+    if (!Number.isFinite(info.total) || info.total <= 0) {
+      throw new ShiftPdfError("This PDF reports no pages", 422);
+    }
+    return info.total;
+  } finally {
+    await parser.destroy();
+  }
+}
+
+/** Split a page count into the batches the client will each request. */
+export function planBatches(totalPages: number): PageBatch[] {
+  const batches: PageBatch[] = [];
+  for (let start = 1; start <= totalPages; start += PAGES_PER_CHUNK) {
+    const end = Math.min(start + PAGES_PER_CHUNK - 1, totalPages);
+    batches.push({ index: batches.length, pages: range(start, end) });
+  }
+  return batches;
+}
+
+function range(from: number, to: number): number[] {
+  const out: number[] = [];
+  for (let n = from; n <= to; n += 1) out.push(n);
+  return out;
+}
+
+/**
+ * Rasterise one batch of pages to PNG.
  *
  * The buffer is consumed here — pdf.js transfers the bytes to its worker
  * thread, so `buf` must not be reused by the caller afterwards. Callers should
  * pass a copy if they still need the bytes.
  */
-export async function extractPdfPages(buf: ArrayBuffer): Promise<ParsedShiftPage[]> {
+export async function extractPdfPages(buf: ArrayBuffer, pages?: number[]): Promise<ParsedShiftPage[]> {
   // pdf-parse wants a TypedArray; passing Uint8Array lets pdf.js transfer the
   // buffer to its worker instead of structured-cloning a copy.
   const parser = new PDFParse({ data: new Uint8Array(buf) });
@@ -102,6 +128,7 @@ export async function extractPdfPages(buf: ArrayBuffer): Promise<ParsedShiftPage
     // 28-page scan in memory at once is tens of megabytes of PNG that never
     // needs to coexist with the base64 copies we are about to make.
     const shots = await parser.getScreenshot({
+      ...(pages && pages.length > 0 ? { partial: pages } : {}),
       desiredWidth: PAGE_IMAGE_WIDTH,
       imageDataUrl: false,
       imageBuffer: true,
@@ -111,14 +138,6 @@ export async function extractPdfPages(buf: ArrayBuffer): Promise<ParsedShiftPage
     // Release pdf.js' worker and its cached page images even if parsing threw.
     await parser.destroy();
   }
-}
-
-function chunkPages(pages: ParsedShiftPage[]): ParsedShiftPage[][] {
-  const chunks: ParsedShiftPage[][] = [];
-  for (let i = 0; i < pages.length; i += PAGES_PER_CHUNK) {
-    chunks.push(pages.slice(i, i + PAGES_PER_CHUNK));
-  }
-  return chunks;
 }
 
 function toSection(subject: unknown): string {
@@ -139,6 +158,51 @@ interface RawExtraction {
   shiftName?: unknown;
   examDate?: unknown;
   questions?: unknown;
+}
+
+export type { RawExtraction };
+
+/** Normalise one batch's raw model output into stored questions. */
+export function normalizeExtraction(raw: RawExtraction): BatchExtraction {
+  return {
+    shiftName: typeof raw.shiftName === "string" ? raw.shiftName.trim() : "",
+    examDate: typeof raw.examDate === "string" ? raw.examDate.trim() : "",
+    questions: mergeQuestions([raw]),
+  };
+}
+
+/**
+ * Fold every batch's output into one shift.
+ *
+ * Runs on the client, so each batch is treated as untrusted: it is whatever
+ * came back over the wire, and a missing or malformed questions array has to
+ * degrade to "this batch contributed nothing" rather than throw and take the
+ * whole upload down. Each batch was already normalised server-side, so this
+ * only has to dedup — a question straddling a page break can be reported by
+ * two different batches.
+ */
+export function mergeBatches(
+  batches: (BatchExtraction | null | undefined)[],
+  fallbackName: string
+): { shiftName: string; examDate: string; questions: ShiftQuestion[] } {
+  const valid = batches.filter(
+    (b): b is BatchExtraction => Boolean(b) && Array.isArray(b?.questions)
+  );
+  // The first batch that actually printed a name owns it, so a leading batch
+  // that failed cannot steal the header from the batch that read it.
+  const shiftName = valid.find((b) => b.shiftName?.trim())?.shiftName?.trim() || fallbackName;
+  const examDate = valid.find((b) => b.examDate?.trim())?.examDate?.trim() || "";
+
+  const seen = new Set<string>();
+  const questions: ShiftQuestion[] = [];
+  for (const q of valid.flatMap((b) => b.questions)) {
+    if (!q || typeof q.question !== "string") continue;
+    const key = q.question.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    questions.push(q);
+  }
+  return { shiftName, examDate, questions };
 }
 
 function mergeQuestions(shifts: RawExtraction[]): ShiftQuestion[] {
@@ -195,20 +259,6 @@ function toAnswerIndex(raw: unknown, optionCount: number): number | null {
   if (typeof raw !== "number" || !Number.isInteger(raw)) return null;
   if (raw < 0 || raw >= optionCount) return null;
   return raw;
-}
-
-function pickShiftName(extractions: RawExtraction[], fallback: string): string {
-  for (const e of extractions) {
-    if (typeof e.shiftName === "string" && e.shiftName.trim()) return e.shiftName.trim();
-  }
-  return fallback;
-}
-
-function pickExamDate(extractions: RawExtraction[]): string {
-  for (const e of extractions) {
-    if (typeof e.examDate === "string" && e.examDate.trim()) return e.examDate.trim();
-  }
-  return "";
 }
 
 const EXTRACTION_SCHEMA = {
@@ -309,114 +359,37 @@ function isRateLimited(err: unknown): boolean {
 }
 
 /**
- * Parse an uploaded shift PDF into structured questions.
+ * OCR a single batch of pages and return its questions.
  *
- * `fallbackName` labels the shift when the paper never prints one.
- */export async function parseShiftPdf(buf: ArrayBuffer, fallbackName: string): Promise<ParsedShift> {
-  // One parse only: the buffer is transferred to pdf.js' worker, so a second
-  // pass would read detached memory.
-  const pages = await extractPdfPages(buf);
+ * Deliberately one batch per call. A whole 28-page paper used to be parsed in a
+ * single request, which meant one serverless function held open for the sum of
+ * every batch's model latency — far past the platform's execution ceiling, so
+ * the upload died with a gateway timeout after the work had already been paid
+ * for. Splitting the loop out to the caller keeps each invocation to one model
+ * call, and the whole loop can then be paced and retried batch by batch.
+ */
+export async function parsePdfBatch(
+  buf: ArrayBuffer,
+  pages: number[],
+  isFirstBatch: boolean
+): Promise<BatchExtraction> {
   if (pages.length === 0) {
-    throw new ShiftPdfError("This PDF has no readable pages", 422);
+    throw new ShiftPdfError("No pages given for this batch", 400);
   }
-
-  // Page image sizes are the only diagnostic left now that nothing tries to
-  // extract text: a page that rendered to almost nothing is a blank or a
-  // failed rasterisation, and that is what "unreadable" now means.
-  console.log(
-    `[shift-pdf] pages=${pages.length} imageBytes=${pages.reduce((a, p) => a + p.png.length, 0)} ` +
-      `[${pages.map((p) => `${p.num}:${Math.round(p.png.length / 1024)}k`).join(" ")}]`
-  );
-
-  // Chunks run one at a time inside a plain for..of loop, deliberately. Each
-  // batch is a multi-megabyte image request, and the Gemini free tier counts
-  // requests per minute: firing batches in parallel trips the quota and every
-  // concurrent batch then fails together, losing whole pages of the paper.
-  let extractionsSeen = 0;
-  const chunks = chunkPages(pages);
-
-  // Status is recorded per chunk *index*. Previously failures were pushed into a
-  // flat array, so `failures[i]` was the i-th failure rather than the i-th
-  // chunk: two failures anywhere shifted every later index, marking healthy
-  // chunks as unreadable and the actually-failed ones as read. A 25-page paper
-  // then reported nearly all pages skipped while most had parsed fine.
-  const results: ChunkResult[] = [];
-  for (const [index, chunk] of chunks.entries()) {
-    // Pace the batches. Sequential alone is not enough: an OCR call returns in a
-    // few seconds, so a 28-page paper would otherwise fire its five batches back
-    // to back and collide with the free tier's per-minute request ceiling.
-    // Skipped before the first batch so an upload is not delayed for nothing.
-    if (index > 0) await sleep(INTER_CHUNK_DELAY_MS);
-    try {
-      const parts = buildChunkParts(chunk, extractionsSeen === 0);
-      const raw = await callChunkWithRetry(parts, index);
-      extractionsSeen += 1;
-      results.push({ ok: true, extraction: raw, index });
-    } catch (err) {
-      // Keep going: one rate-limited chunk must not discard the chunks that
-      // succeeded, but the caller has to learn the paper is only partly read.
-      results.push({
-        ok: false,
-        index,
-        pages: chunk.map((p) => p.num),
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  const extractions: RawExtraction[] = [];
-  const failures: string[] = [];
-  const readChunks = new Set<number>();
-
-  for (const r of results) {
-    if (r.ok) {
-      readChunks.add(r.index);
-      extractions.push(r.extraction);
-    } else {
-      failures.push(`pages ${r.pages.join(",")}: ${r.message}`);
-    }
-  }
-
-  if (extractions.length === 0) {
+  const rendered = await extractPdfPages(buf, pages);
+  if (rendered.length === 0) {
     throw new ShiftPdfError(
-      `Could not read this PDF with the AI (${failures[0] || "unknown error"})`,
-      502
+      `Could not render page${pages.length > 1 ? "s" : ""} ${pages.join(", ")}`,
+      422
     );
   }
-
-  const questions = mergeQuestions(extractions);
-  if (questions.length === 0) {
-    throw new ShiftPdfError("No questions found in this PDF", 422);
-  }
-
-  // A page can be missing for two reasons that need different fixes. A page
-  // whose rasterisation came back empty is unreadable by anyone — the scan
-  // itself is unusable. A page that rendered fine but whose batch hit the rate
-  // limit is recoverable by re-uploading once the limit clears.
-  const blankPages = new Set(pages.filter((p) => p.png.length === 0).map((p) => p.num));
-  const readPages = new Set(
-    chunks.filter((_, i) => readChunks.has(i)).flatMap((c) => c.map((p) => p.num))
-  );
-  const unreadablePages: number[] = [];
-  for (let n = 1; n <= pages.length; n += 1) {
-    if (!readPages.has(n)) unreadablePages.push(n);
-  }
-
+  const parts = buildChunkParts(rendered, isFirstBatch);
+  const raw = await callChunkWithRetry(parts, 0);
+  const out = normalizeExtraction(raw ?? {});
   console.log(
-    `[shift-pdf] chunks=${chunks.length} read=${readChunks.size} questions=${questions.length} ` +
-      `withAnswers=${questions.filter((q) => q.correctAnswer !== null).length} ` +
-      `blankPages=${blankPages.size ? [...blankPages].join(",") : "none"} ` +
-      `failedChunks=${failures.length ? failures.join(" | ") : "none"}`
+    `[shift-pdf] batch pages=${pages.join(",")} rendered=${rendered.length} questions=${out.questions.length}`
   );
-
-  return {
-    shiftName: pickShiftName(extractions, fallbackName),
-    examDate: pickExamDate(extractions),
-    questions,
-    unreadablePages,
-    chunkCount: chunks.length,
-    failedChunks: failures,
-  };
+  return out;
 }
 
 export class ShiftPdfError extends Error {
@@ -426,14 +399,4 @@ export class ShiftPdfError extends Error {
     this.name = "ShiftPdfError";
     this.status = status;
   }
-}
-
-/** Convert a parsed shift into a storable one with stable ids. */
-export function toStoredShift(parsed: ParsedShift, id: string): ExamShift {
-  return {
-    id,
-    name: parsed.shiftName,
-    examDate: parsed.examDate,
-    questions: parsed.questions.map((q, i) => ({ ...q, id: `${id}q${i + 1}` })),
-  };
 }

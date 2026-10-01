@@ -39,6 +39,24 @@ export interface ExamShift {
   questions: ShiftQuestion[];
 }
 
+/** One batch of a scanned paper, addressed by the page numbers it covers. */
+export interface PageBatch {
+  index: number;
+  pages: number[];
+}
+
+/**
+ * What one batch's OCR produced, before it is merged with the other batches.
+ *
+ * Produced by the server per batch, then merged by the browser, so this shape
+ * crosses the wire and is therefore validated on arrival rather than assumed.
+ */
+export interface BatchExtraction {
+  shiftName: string;
+  examDate: string;
+  questions: ShiftQuestion[];
+}
+
 export interface ExamShiftData {
   exam: string;
   updatedAt: string;
