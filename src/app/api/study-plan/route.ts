@@ -91,25 +91,18 @@ export async function POST(request: NextRequest) {
       const existing = cachedPlan as StudyPlan | undefined;
       const base = existing || (await generateStudyPlan(videoInfo));
       const detail = await generateRevisionDetail(videoInfo, topic, base);
-      const merged: StudyPlan = {
-        ...base,
-        revisionPoints: base.revisionPoints.map((p) =>
-          p.point === topic ? { ...p, detail } : p
-        ),
-      };
-      return Response.json({ type: "video", videoInfo, studyPlan: merged });
-    }
-
-    if (style === "revision-detail") {
-      const existing = cachedPlan as StudyPlan | undefined;
-      const base = existing || (await generateStudyPlan(videoInfo));
-      const detail = await generateRevisionDetail(videoInfo, topic, base);
+      // A cached plan can hold revision points as plain strings (that is how the
+      // seeded data/subjects.json stores them), so read the text off either
+      // shape before matching. Matching `p.point` alone silently never matched a
+      // string point, the detail was never attached, and the UI kept showing the
+      // "Get full detail" button forever.
+      const norm = (value: unknown) => String(value ?? "").trim();
       const merged: StudyPlan = {
         ...base,
         revisionPoints: (base.revisionPoints || []).map((p) => {
           const pointText = typeof p === "string" ? p : p?.point || "";
           const priorDetail = typeof p === "string" ? undefined : p?.detail;
-          return pointText === topic ? { point: pointText, detail } : { point: pointText, detail: priorDetail };
+          return norm(pointText) === norm(topic) ? { point: pointText, detail } : { point: pointText, detail: priorDetail };
         }),
       };
       return Response.json({ type: "video", videoInfo, studyPlan: merged });

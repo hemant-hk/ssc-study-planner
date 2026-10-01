@@ -63,54 +63,230 @@ function extractQuestions(jsonText: string): Question[] {
   }
 }
 
-// Single-attempt Groq call with a short abort so a rate-limited (429) response
-// fails fast instead of burning the 1-2s retry sleeps inside callGroq. The
-// abort is clamped to the remaining deadline so a slow response can never push
-// the route past the platform timeout.
-async function generateBlockFast(
-  apiKey: string,
-  prompt: string,
-  maxTokens: number,
-  start: number
-): Promise<Question[]> {
-  const budget = Math.max(500, HARD_DEADLINE_MS - (Date.now() - start));
-  try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-oss-120b",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: Math.min(maxTokens, 4500),
-      }),
-      signal: AbortSignal.timeout(budget),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    if (!content) return [];
-    return extractQuestions(content);
-  } catch {
-    return [];
+// A single AI provider's free quota is small (Groq allows only 8000 tokens per
+// minute for the whole organization, shared across every key). Since each
+// provider meters its own quota independently, running several of them at the
+// same time multiplies the questions we can produce inside the deadline.
+type BlockGenerator = (prompt: string, maxTokens: number) => Promise<Question[]>;
+
+// The gpt-oss models emit a hidden reasoning trace before the answer, so a
+// small max_tokens budget gets spent on reasoning and comes back with empty
+// content. Non-reasoning models are a far better fit for short question
+// chunks, and the reasoning ones get a bigger budget when we do fall back.
+const REASONING_MODELS = new Set(["openai/gpt-oss-120b", "openai/gpt-oss-20b"]);
+const REASONING_TOKEN_BONUS = 2200;
+
+function groqBlockGenerator(apiKey: string, model: string, start: number): BlockGenerator {
+  return async (prompt, maxTokens) => {
+    const budget = Math.max(500, HARD_DEADLINE_MS - (Date.now() - start));
+    const tokens = REASONING_MODELS.has(model) ? maxTokens + REASONING_TOKEN_BONUS : maxTokens;
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: tokens,
+        }),
+        signal: AbortSignal.timeout(budget),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      if (!content) return [];
+      return extractQuestions(content);
+    } catch {
+      return [];
+    }
+  };
+}
+
+function geminiBlockGenerator(apiKey: string, model: string, start: number): BlockGenerator {
+  return async (prompt, maxTokens) => {
+    // Clamp the abort to the remaining deadline so a slow provider can never
+    // push the route past the platform timeout.
+    const budget = Math.max(500, HARD_DEADLINE_MS - (Date.now() - start));
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens },
+          }),
+          signal: AbortSignal.timeout(budget),
+        }
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const text = parts.map((p: { text?: string }) => p.text || "").join("");
+      if (!text) return [];
+      return extractQuestions(text);
+    } catch {
+      return [];
+    }
+  };
+}
+
+// OpenAI and Anthropic have their own, far larger per-minute quotas than a free
+// Groq key, so adding either key to the pool multiplies real throughput instead
+// of just adding another key to the same rate-limited organization.
+function openaiBlockGenerator(apiKey: string, model: string, start: number): BlockGenerator {
+  return async (prompt, maxTokens) => {
+    const budget = Math.max(500, HARD_DEADLINE_MS - (Date.now() - start));
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_completion_tokens: maxTokens + REASONING_TOKEN_BONUS,
+        }),
+        signal: AbortSignal.timeout(budget),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      if (!content) return [];
+      return extractQuestions(content);
+    } catch {
+      return [];
+    }
+  };
+}
+
+function anthropicBlockGenerator(apiKey: string, model: string, start: number): BlockGenerator {
+  return async (prompt, maxTokens) => {
+    const budget = Math.max(500, HARD_DEADLINE_MS - (Date.now() - start));
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens + REASONING_TOKEN_BONUS,
+          temperature: 0.7,
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(budget),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const text = (Array.isArray(data.content) ? data.content : [])
+        .map((p: { text?: string }) => p?.text || "")
+        .join("");
+      if (!text) return [];
+      return extractQuestions(text);
+    } catch {
+      return [];
+    }
+  };
+}
+
+// Every configured provider/model, so the chunk pool can spread work across
+// them. Non-reasoning models come first: they answer a short chunk in a few
+// hundred ms and never blow the token budget on a hidden reasoning trace.
+// `start` is the request start, used to clamp each call's abort to the deadline.
+function buildGenerators(start: number): BlockGenerator[] {
+  const out: BlockGenerator[] = [];
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey && groqKey !== "your_groq_api_key_here") {
+    const models = (process.env.MOCK_GROQ_MODELS || "qwen/qwen3.8-27b,openai/gpt-oss-20b,openai/gpt-oss-120b")
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean);
+    for (const model of models) out.push(groqBlockGenerator(groqKey, model, start));
+  }
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey && geminiKey !== "your_gemini_api_key_here") {
+    const model = (process.env.GEMINI_MODELS || "gemini-3.6-flash,gemini-3.1-pro-preview")
+      .split(",")[0]
+      .trim();
+    out.push(geminiBlockGenerator(geminiKey, model, start));
+  }
+  // OpenAI and Anthropic: independent, much larger quotas, so these are worth
+  // trying first when a key is present.
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey && !/^your_|^$/.test(openaiKey)) {
+    const model = (process.env.MOCK_OPENAI_MODELS || "gpt-4o-mini").split(",")[0].trim();
+    out.unshift(openaiBlockGenerator(openaiKey, model, start));
+  }
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey && !/^your_|^$/.test(anthropicKey)) {
+    const model = (process.env.MOCK_ANTHROPIC_MODEL || "claude-3-5-haiku-latest").split(",")[0].trim();
+    out.unshift(anthropicBlockGenerator(anthropicKey, model, start));
+  }
+  return out;
+}
+
+// How many chunks each provider may have in flight at once. Chunks are small,
+// so a couple per provider still fit inside its per-minute quota.
+const CHUNKS_PER_PROVIDER = 2;
+
+// A provider whose quota is spent fails instantly, so handing it a share of the
+// work would just waste that slot. Track failures per provider and route each
+// chunk to a healthy one, only falling back to the rest when all have failed.
+class ProviderPool {
+  private fails: number[] = [];
+  private cursor = 0;
+
+  constructor(private generators: BlockGenerator[]) {
+    this.fails = generators.map(() => 0);
+  }
+
+  get size(): number {
+    return this.generators.length;
+  }
+
+  // Round-robin over the healthy providers so none is hammered; if the picked
+  // one is failing, switch to whichever has the fewest failures.
+  next(): { generate: BlockGenerator; index: number } {
+    this.cursor = (this.cursor + 1) % this.generators.length;
+    let chosen = this.cursor;
+    if (this.fails[chosen] > 0) {
+      let best = 0;
+      for (let i = 1; i < this.fails.length; i++) {
+        if (this.fails[i] < this.fails[best]) best = i;
+      }
+      chosen = best;
+    }
+    return { generate: this.generators[chosen], index: chosen };
+  }
+
+  report(index: number, ok: boolean): void {
+    if (index < 0 || index >= this.fails.length) return;
+    this.fails[index] = ok ? 0 : this.fails[index] + 1;
   }
 }
 
-// Small concurrent pool so top-up chunks don't hammer the rate limit.
 async function mapPool<T, R>(
   items: T[],
   limit: number,
-  fn: (item: T) => Promise<R>
+  fn: (item: T, index: number) => Promise<R>
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let cursor = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (cursor < items.length) {
       const i = cursor++;
-      results[i] = await fn(items[i]);
+      results[i] = await fn(items[i], i);
     }
   });
   await Promise.all(workers);
@@ -161,7 +337,7 @@ function writePool(pool: Pool): void {
   try {
     const trimmed: Pool = {};
     for (const [section, list] of Object.entries(pool)) {
-      if (!Array.isArray(list) || list.length === 0) continue;
+      if (!section.trim() || !Array.isArray(list) || list.length === 0) continue;
       const seen = new Set<string>();
       const kept: Question[] = [];
       for (const q of shuffle(list)) {
@@ -245,7 +421,7 @@ function schemaFor(type: string, subject: string, topic: string, section: string
 // then top up with small concurrent chunks if the model under-delivered. Stops
 // early to respect the hard deadline so the client always gets valid JSON.
 async function generateQuestions(
-  apiKey: string,
+  providers: ProviderPool,
   makePrompt: (count: number) => string,
   start: number,
   seeded: Question[] = []
@@ -254,9 +430,10 @@ async function generateQuestions(
   pushUnique(questions, seeded);
   if (questions.length >= TARGET) return questions.slice(0, TARGET);
 
-  // Small 3-question chunks only. A single 25-question call would ask for
-  // ~4500 tokens at once, which alone can exceed the Groq per-minute quota, so
-  // chunking is what actually gets us a full set of 25.
+  // Small 3-question chunks only, spread across every configured provider. A
+  // single 25-question call would ask for ~4500 tokens at once, which alone can
+  // exceed one provider's per-minute quota, so chunking across independent
+  // providers is what actually gets us a full set of 25.
   const batches: number[] = [];
   let remaining = TARGET - questions.length;
   while (remaining > 0) {
@@ -264,9 +441,12 @@ async function generateQuestions(
     batches.push(size);
     remaining -= size;
   }
-  const chunkResults = await mapPool(batches, 6, async (size) => {
+  const chunkResults = await mapPool(batches, providers.size * CHUNKS_PER_PROVIDER, async (size) => {
     if (Date.now() - start > HARD_DEADLINE_MS) return [] as Question[];
-    return generateBlockFast(apiKey, makePrompt(size), CHUNK_TOKENS, start);
+    const { generate, index } = providers.next();
+    const questions = await generate(makePrompt(size), CHUNK_TOKENS);
+    providers.report(index, questions.length > 0);
+    return questions;
   });
   for (const chunk of chunkResults) {
     if (Date.now() - start > HARD_DEADLINE_MS) break;
@@ -280,8 +460,8 @@ export async function POST(request: NextRequest) {
   const start = Date.now();
   try {
     const { type, topic, subject, sections } = await request.json();
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return Response.json({ error: "API key not configured" }, { status: 500 });
+    const providers = new ProviderPool(buildGenerators(start));
+    if (providers.size === 0) return Response.json({ error: "No AI provider is configured" }, { status: 500 });
 
     if (type === "full") {
       // Assemble from disk first (instant, no rate limit): the persisted pool,
@@ -302,11 +482,11 @@ export async function POST(request: NextRequest) {
         return { name, questions: questions.slice(0, TARGET) };
       });
 
-      // Fill any shortfall with small chunk calls. The Groq TPM quota is tiny,
-      // so each chunk asks for only 3 questions (~800 tokens). Chunks are
-      // interleaved round-robin across sections so the first wave of parallel
-      // calls gives every section equal progress instead of letting one
-      // section eat the whole budget. We stop the instant the deadline hits.
+      // Fill any shortfall with small chunk calls spread across every
+      // configured provider. Chunks are interleaved round-robin across sections
+      // so the first wave of parallel calls gives every section equal progress
+      // instead of letting one section eat the whole budget. We stop the
+      // instant the deadline hits.
       const queue: { idx: number; size: number }[] = [];
       const shortfall = seeded.map((sec) => TARGET - sec.questions.length);
       const chunkCount = Math.ceil(Math.max(0, ...shortfall) / CHUNK_SIZE);
@@ -317,14 +497,13 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const results = await mapPool(queue, 6, async ({ idx, size }) => {
+      // A couple of in-flight chunks per provider, so the pool runs the
+      // providers side by side and skips any whose quota is spent.
+      const results = await mapPool(queue, providers.size * CHUNKS_PER_PROVIDER, async ({ idx, size }) => {
         if (Date.now() - start > HARD_DEADLINE_MS) return { idx, questions: [] as Question[] };
-        const questions = await generateBlockFast(
-          apiKey,
-          sectionSchema(seeded[idx].name, size),
-          CHUNK_TOKENS,
-          start
-        );
+        const { generate, index } = providers.next();
+        const questions = await generate(sectionSchema(seeded[idx].name, size), CHUNK_TOKENS);
+        providers.report(index, questions.length > 0);
         return { idx, questions };
       });
       for (const { idx, questions } of results) {
@@ -361,16 +540,20 @@ export async function POST(request: NextRequest) {
             .filter((k) => k === subj || SECTION_TO_SUBJECT[k] === subj)
             .flatMap((k) => poolQuestions(pool, k))
         : [];
-    const questions = await generateQuestions(apiKey, makePrompt, start, poolSeed);
+    const questions = await generateQuestions(providers, makePrompt, start, poolSeed);
 
     // Fold freshly generated questions back into the pool so later tests of the
     // same subject can reuse them without another AI round-trip.
     if (questions.length > poolSeed.length) {
       const fresh = questions.slice(poolSeed.length);
-      const key = SECTION_TO_SUBJECT[subj] || subj;
-      const existing = Array.isArray(pool[key]) ? pool[key] : [];
-      pool[key] = [...existing, ...fresh];
-      writePool(pool);
+      // Key the pool by the mock's own section name so a later full mock can
+      // find it; never write an empty key.
+      const key = subj || top;
+      if (key && fresh.length > 0) {
+        const existing = Array.isArray(pool[key]) ? pool[key] : [];
+        pool[key] = [...existing, ...fresh];
+        writePool(pool);
+      }
     }
 
     const elapsed = Date.now() - start;

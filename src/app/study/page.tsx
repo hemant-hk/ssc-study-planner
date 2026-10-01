@@ -199,27 +199,34 @@ export default function Home() {
       // ignore corrupted completion cache
     }
 
-    // Fire the plan-cache fetch in parallel with /api/subjects so the sidebar
-    // gets fresh subjects without waiting on a second sequential round-trip.
-    const plansPromise = getCachedPlans();
+    // Render the sidebar as soon as /api/subjects lands. The plan cache is a
+    // separate and much larger request, and awaiting it here held the whole
+    // subject list hostage behind it, so opening a subject stalled until every
+    // cached plan for every video had downloaded.
     fetch("/api/subjects")
       .then((res) => res.json())
-      .then(async (data) => {
-        if (Array.isArray(data)) {
-          const localPlans = await plansPromise;
-          setSubjects(
-            (data as Subject[]).map((s) => ({
-              ...s,
-              videos: s.videos.map((v) =>
-                v.studyPlan ? v : { ...v, studyPlan: localPlans[v.videoId] || null }
-              ),
-            }))
-          );
-        }
+      .then((data) => {
+        if (Array.isArray(data)) setSubjects(data as Subject[]);
       })
       .catch(() => {
         const saved = localStorage.getItem("yt-study-subjects");
         if (saved) setSubjects(JSON.parse(saved));
+      });
+
+    // Fill plans in behind the sidebar. Only fills the gaps, so it can never
+    // overwrite a plan that arrived with the subjects payload.
+    getCachedPlans()
+      .then((plans) => {
+        if (!plans || Object.keys(plans).length === 0) return;
+        setSubjects((prev) =>
+          prev.map((s) => ({
+            ...s,
+            videos: s.videos.map((v) => (v.studyPlan ? v : { ...v, studyPlan: plans[v.videoId] || null })),
+          }))
+        );
+      })
+      .catch(() => {
+        // Plans stay absent; videos regenerate on open as before.
       });
 
     const adminStatus = localStorage.getItem("isAdmin");
