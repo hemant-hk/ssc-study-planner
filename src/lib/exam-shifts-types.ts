@@ -21,7 +21,14 @@ export interface ShiftQuestion {
   section: string;
   difficulty: ShiftDifficulty;
   options?: string[];
-  correctAnswer?: number;
+  /**
+   * Zero-based index into `options`, or null when the paper marked no answer.
+   *
+   * Null is a real value, not a missing one: it means "this paper showed no
+   * answer key for this question", which the UI reports and which stops a
+   * guessed answer from being presented as fact.
+   */
+  correctAnswer?: number | null;
   explanation?: string;
 }
 

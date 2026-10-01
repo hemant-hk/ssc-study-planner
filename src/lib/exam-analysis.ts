@@ -108,7 +108,7 @@ export interface RepeatedQuestion {
   similarity: number;
   explanation?: string;
   options?: string[];
-  correctAnswer?: number;
+  correctAnswer?: number | null;
 }
 
 interface ClusterMember {

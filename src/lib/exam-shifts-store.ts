@@ -49,6 +49,17 @@ function normalizeQuestion(raw: unknown): ShiftQuestion | null {
   const options = Array.isArray(q.options)
     ? q.options.filter((o): o is string => typeof o === "string" && o.trim().length > 0)
     : undefined;
+  // An explicit null means the paper had no answer key; an absent field means
+  // the question predates answer extraction. Both normalise to null, so the UI
+  // can say "unmarked" rather than showing an option as correct on no evidence.
+  const correctAnswer =
+    typeof q.correctAnswer === "number" &&
+    Number.isInteger(q.correctAnswer) &&
+    options &&
+    q.correctAnswer >= 0 &&
+    q.correctAnswer < options.length
+      ? q.correctAnswer
+      : null;
   return {
     id: typeof q.id === "string" && q.id ? q.id : "",
     question,
@@ -56,7 +67,7 @@ function normalizeQuestion(raw: unknown): ShiftQuestion | null {
     section: typeof q.section === "string" && q.section.trim() ? q.section.trim() : EXAM_SECTIONS[0],
     difficulty,
     ...(options && options.length > 0 ? { options } : {}),
-    ...(typeof q.correctAnswer === "number" ? { correctAnswer: q.correctAnswer } : {}),
+    correctAnswer,
     ...(typeof q.explanation === "string" && q.explanation.trim() ? { explanation: q.explanation } : {}),
   };
 }
