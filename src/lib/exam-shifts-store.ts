@@ -1,198 +1,150 @@
-// Store for the live-exam shift analysis. While an exam is running, aspirants
-// report the questions from their shift; the same question often shows up in
-// more than one shift, and that repetition is the single most useful signal for
-// the next tier — so we keep the raw per-shift questions here and let
-// exam-analysis.ts derive the cross-shift picture.
+// Store for the live-exam shift analysis.
+//
+// While an exam runs, the admin enters the questions reported from each shift;
+// the same question often reappears in other shifts, and that repetition is the
+// single most useful signal for the next tier, so we keep the raw per-shift
+// questions here and let exam-analysis.ts derive the cross-shift picture.
+//
+// Persistence is tiered like the rest of the app: Upstash Redis is the source of
+// truth (so the board survives redeploys and is shared across devices), and a
+// local JSON file mirrors it when the cloud is unreachable or not configured.
+// There is no seed content — an empty board is a real empty state, because the
+// admin panel is the only way questions get in and we must never show invented
+// questions as if they were reported from a shift.
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
+import {
+  getServerRedis,
+  markRedisReachable,
+  markRedisUnreachable,
+} from "./server-redis";
+import {
+  EXAM_SECTIONS,
+  DEFAULT_EXAM_NAME,
+  type ExamShift,
+  type ExamShiftData,
+  type ShiftQuestion,
+  type ShiftDifficulty,
+} from "./exam-shifts-types";
 
+// Server-only: this module touches Redis and the filesystem, so it must never
+// be imported from a client component.
+export * from "./exam-shifts-types";
+
+const REDIS_KEY = "shifts:cgl2026";
 const FILE = path.join(process.cwd(), "data", "exam-shifts.json");
 
-export const EXAM_SECTIONS = [
-  "General Intelligence",
-  "General Awareness",
-  "Quantitative Aptitude",
-  "English Comprehension",
-] as const;
-
-export type ExamSection = (typeof EXAM_SECTIONS)[number];
-export type ShiftDifficulty = "easy" | "medium" | "hard";
-
-export interface ShiftQuestion {
-  id: string;
-  question: string;
-  topic: string;
-  section: string;
-  difficulty: ShiftDifficulty;
-  options?: string[];
-  correctAnswer?: number;
-  explanation?: string;
+export function emptyBoard(): ExamShiftData {
+  return { exam: DEFAULT_EXAM_NAME, updatedAt: "", shifts: [] };
 }
 
-export interface ExamShift {
-  id: string;
-  name: string;
-  examDate: string;
-  questions: ShiftQuestion[];
+function normalizeQuestion(raw: unknown): ShiftQuestion | null {
+  if (!raw || typeof raw !== "object") return null;
+  const q = raw as Record<string, unknown>;
+  const question = typeof q.question === "string" ? q.question.trim() : "";
+  if (!question) return null;
+  const difficulty: ShiftDifficulty =
+    q.difficulty === "easy" || q.difficulty === "hard" || q.difficulty === "medium" ? q.difficulty : "medium";
+  const options = Array.isArray(q.options)
+    ? q.options.filter((o): o is string => typeof o === "string" && o.trim().length > 0)
+    : undefined;
+  return {
+    id: typeof q.id === "string" && q.id ? q.id : "",
+    question,
+    topic: typeof q.topic === "string" && q.topic.trim() ? q.topic.trim() : "General",
+    section: typeof q.section === "string" && q.section.trim() ? q.section.trim() : EXAM_SECTIONS[0],
+    difficulty,
+    ...(options && options.length > 0 ? { options } : {}),
+    ...(typeof q.correctAnswer === "number" ? { correctAnswer: q.correctAnswer } : {}),
+    ...(typeof q.explanation === "string" && q.explanation.trim() ? { explanation: q.explanation } : {}),
+  };
 }
 
-export interface ExamShiftData {
-  exam: string;
-  updatedAt: string;
-  shifts: ExamShift[];
+export function normalizeBoard(raw: unknown): ExamShiftData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const data = raw as Record<string, unknown>;
+  if (!Array.isArray(data.shifts)) return null;
+  const shifts = data.shifts
+    .map((s, si) => {
+      const shift = (s || {}) as Record<string, unknown>;
+      const questions = (Array.isArray(shift.questions) ? shift.questions : [])
+        .map(normalizeQuestion)
+        .filter((q): q is ShiftQuestion => q !== null)
+        .map((q, qi) => ({ ...q, id: q.id || `q${qi + 1}` }));
+      return {
+        id: typeof shift.id === "string" && shift.id ? shift.id : `shift-${si + 1}`,
+        name: typeof shift.name === "string" && shift.name ? shift.name : `Shift ${si + 1}`,
+        examDate: typeof shift.examDate === "string" ? shift.examDate : "",
+        questions,
+      };
+    })
+    .filter((s) => s.questions.length > 0 || s.name.length > 0);
+  return {
+    exam: typeof data.exam === "string" && data.exam ? data.exam : DEFAULT_EXAM_NAME,
+    updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : "",
+    shifts,
+  };
 }
 
-// Starter content so the section is meaningful before the admin adds the live
-// paper. Shift 1 and Shift 2 deliberately share three questions: that overlap is
-// what the repeat analysis is built to surface.
-const SEED: ExamShiftData = {
-  exam: "SSC CGL 2026 Tier-I",
-  updatedAt: "2026-10-01T00:00:00.000Z",
-  shifts: [
-    {
-      id: "shift-1",
-      name: "Shift 1",
-      examDate: "2026-09-28",
-      questions: [
-        {
-          id: "s1q1",
-          question:
-            "Which Article of the Indian Constitution deals with the Right to Constitutional Remedies?",
-          topic: "Indian Polity",
-          section: "General Awareness",
-          difficulty: "easy",
-          options: ["Article 12", "Article 19", "Article 21", "Article 32"],
-          correctAnswer: 3,
-          explanation:
-            "Article 32 (Dr. Ambedkar called it the heart and soul of the Constitution) lets a citizen move the Supreme Court to enforce Fundamental Rights.",
-        },
-        {
-          id: "s1q2",
-          question: "The Tropic of Cancer passes through how many Indian states?",
-          topic: "Indian Geography",
-          section: "General Awareness",
-          difficulty: "medium",
-          options: ["6", "7", "8", "9"],
-          correctAnswer: 2,
-          explanation:
-            "Eight states: Gujarat, Rajasthan, Madhya Pradesh, Chhattisgarh, Jharkhand, West Bengal, Tripura and Mizoram.",
-        },
-        {
-          id: "s1q3",
-          question: "If the sum of two numbers is 42 and their product is 437, the numbers are:",
-          topic: "Algebra",
-          section: "Quantitative Aptitude",
-          difficulty: "medium",
-          options: ["19 and 23", "21 and 21", "14 and 28", "17 and 25"],
-          correctAnswer: 0,
-          explanation: "19 + 23 = 42 and 19 x 23 = 437, so the numbers are 19 and 23.",
-        },
-        {
-          id: "s1q4",
-          question: "Choose the word that is spelt correctly:",
-          topic: "Spelling",
-          section: "English Comprehension",
-          difficulty: "easy",
-          options: ["Accomodation", "Acommodation", "Accommodation", "Accommadation"],
-          correctAnswer: 2,
-          explanation: "Double c and double m — accommodation.",
-        },
-        {
-          id: "s1q5",
-          question: "A train 180 m long runs at 54 km/h and overtakes a train 120 m long running at 36 km/h in the same direction. The time taken is:",
-          topic: "Speed and Distance",
-          section: "Quantitative Aptitude",
-          difficulty: "hard",
-          options: ["30 s", "45 s", "60 s", "72 s"],
-          correctAnswer: 2,
-          explanation:
-            "Relative speed = 54 - 36 = 18 km/h = 5 m/s. Total distance to clear = 180 + 120 = 300 m, so 300 / 5 = 60 s.",
-        },
-      ],
-    },
-    {
-      id: "shift-2",
-      name: "Shift 2",
-      examDate: "2026-09-28",
-      questions: [
-        {
-          id: "s2q1",
-          question:
-            "Which Article of the Indian Constitution deals with the Right to Constitutional Remedies?",
-          topic: "Indian Polity",
-          section: "General Awareness",
-          difficulty: "easy",
-          options: ["Article 12", "Article 19", "Article 21", "Article 32"],
-          correctAnswer: 3,
-          explanation:
-            "Article 32 (Dr. Ambedkar called it the heart and soul of the Constitution) lets a citizen move the Supreme Court to enforce Fundamental Rights.",
-        },
-        {
-          id: "s2q2",
-          question: "The Tropic of Cancer passes through how many Indian states?",
-          topic: "Indian Geography",
-          section: "General Awareness",
-          difficulty: "medium",
-          options: ["6", "7", "8", "9"],
-          correctAnswer: 2,
-          explanation:
-            "Eight states: Gujarat, Rajasthan, Madhya Pradesh, Chhattisgarh, Jharkhand, West Bengal, Tripura and Mizoram.",
-        },
-        {
-          id: "s2q3",
-          question: "Who wrote the Gitanjali (English version) collection of poems?",
-          topic: "Literature",
-          section: "General Awareness",
-          difficulty: "easy",
-          options: ["Rabindranath Tagore", "Sarojini Naidu", "Bankim Chandra Chattopadhyay", "Premchand"],
-          correctAnswer: 0,
-          explanation: "Rabindranath Tagore; he won the 1913 Nobel Prize in Literature for it.",
-        },
-        {
-          id: "s2q4",
-          question: "Choose the word that is spelt correctly:",
-          topic: "Spelling",
-          section: "English Comprehension",
-          difficulty: "easy",
-          options: ["Accomodation", "Acommodation", "Accommodation", "Accommadation"],
-          correctAnswer: 2,
-          explanation: "Double c and double m — accommodation.",
-        },
-        {
-          id: "s2q5",
-          question: "In a 400 m race A beats B by 40 m, and B beats C by 40 m. By how much does A beat C?",
-          topic: "Time and Work",
-          section: "Quantitative Aptitude",
-          difficulty: "hard",
-          options: ["64 m", "70 m", "76 m", "80 m"],
-          correctAnswer: 2,
-          explanation:
-            "A:B = 400:360 = 10:9 and B:C = 10:9, so A:C = 100:81. When A covers 400 m, C covers 324 m, so A beats C by 76 m.",
-        },
-      ],
-    },
-  ],
-};
-
-export async function loadExamShifts(): Promise<ExamShiftData> {
-  if (!existsSync(FILE)) return SEED;
+async function readRedis(): Promise<ExamShiftData | null> {
+  const redis = getServerRedis();
+  if (!redis) return null;
   try {
-    const raw = await readFile(FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.shifts)) {
-      return parsed as ExamShiftData;
+    const raw = await redis.get(REDIS_KEY);
+    if (raw === null || raw === undefined) {
+      markRedisReachable();
+      return null;
     }
-    return SEED;
+    // The shared client disables automatic deserialization, so this is normally
+    // the JSON string we stored.
+    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+    const parsed = normalizeBoard(JSON.parse(text));
+    markRedisReachable();
+    return parsed;
   } catch {
-    return SEED;
+    markRedisUnreachable();
+    return null;
   }
 }
 
+async function writeRedis(data: ExamShiftData): Promise<boolean> {
+  const redis = getServerRedis();
+  if (!redis) return false;
+  try {
+    await redis.set(REDIS_KEY, JSON.stringify(data));
+    markRedisReachable();
+    return true;
+  } catch {
+    markRedisUnreachable();
+    return false;
+  }
+}
+
+async function readFileBoard(): Promise<ExamShiftData | null> {
+  if (!existsSync(FILE)) return null;
+  try {
+    return normalizeBoard(JSON.parse(await readFile(FILE, "utf-8")));
+  } catch {
+    return null;
+  }
+}
+
+export async function loadExamShifts(): Promise<ExamShiftData> {
+  return (await readRedis()) ?? (await readFileBoard()) ?? emptyBoard();
+}
+
+// Redis first; the file is a best-effort mirror so the board survives a cloud
+// outage. Only fail if neither could be written.
 export async function saveExamShifts(data: ExamShiftData): Promise<void> {
-  const dir = path.join(process.cwd(), "data");
-  if (!existsSync(dir)) await mkdir(dir, { recursive: true });
-  await writeFile(FILE, JSON.stringify(data, null, 2));
+  const cloudOk = await writeRedis(data);
+  try {
+    const dir = path.join(process.cwd(), "data");
+    if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+    await writeFile(FILE, JSON.stringify(data, null, 2));
+  } catch {
+    if (!cloudOk) throw new Error("Failed to persist shift data");
+  }
 }
 
 // Keep a stable id per shift so the editor can target one shift without

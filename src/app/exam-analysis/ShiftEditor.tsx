@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { EXAM_SECTIONS, type ExamShiftData, type ShiftDifficulty } from "@/lib/exam-shifts-store";
+import { EXAM_SECTIONS, type ExamShiftData, type ShiftDifficulty } from "@/lib/exam-shifts-types";
 
 // Admin-only panel for feeding the live paper in. Hidden entirely for everyone
 // else, so the section stays read-only for aspirants.

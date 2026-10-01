@@ -21,11 +21,14 @@ const SECTION_ACCENT: Record<string, string> = {
 export default async function ExamAnalysisPage() {
   const data = await loadExamShifts();
   const analysis = analyze(data);
-  const updatedLabel = new Date(analysis.updatedAt).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const hasData = data.shifts.some((s) => s.questions.length > 0);
+  const updatedLabel = analysis.updatedAt
+    ? new Date(analysis.updatedAt).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
 
   const stats = [
     { label: "Shifts Reported", value: String(analysis.shiftCount) },
@@ -51,10 +54,21 @@ export default async function ExamAnalysisPage() {
             </p>
           </div>
           <span className="bg-zinc-900 border border-zinc-800 text-xs px-2.5 py-1 rounded-full text-zinc-300">
-            Updated {updatedLabel}
+            {updatedLabel ? `Updated ${updatedLabel}` : "No data yet"}
           </span>
         </div>
 
+        {!hasData && (
+          <div className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl px-5 py-8 text-center">
+            <h2 className="text-sm font-semibold text-zinc-100">No shift questions recorded yet</h2>
+            <p className="text-xs text-zinc-400 mt-1.5 max-w-md mx-auto leading-relaxed">
+              Add the questions reported from each shift in the admin panel below. As soon as a second
+              shift is added, repeats and the topic breakdown appear here automatically.
+            </p>
+          </div>
+        )}
+
+        {hasData && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {stats.map((s) => (
             <div key={s.label} className="bg-[#0a0a0c] border border-zinc-800 rounded-xl p-4">
@@ -63,17 +77,25 @@ export default async function ExamAnalysisPage() {
             </div>
           ))}
         </div>
+        )}
 
+        {hasData && (
         <section className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-zinc-800 bg-zinc-950">
-            <h2 className="text-sm font-semibold text-zinc-100">Questions Repeated Across Shifts</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-zinc-100">Questions Repeated Across Shifts</h2>
+              <span className="text-[10px] text-zinc-500">
+                {analysis.exactRepeated} identical · {analysis.similarRepeated} reworded
+              </span>
+            </div>
             <p className="text-[11px] text-zinc-400 mt-0.5">
-              These came up in more than one shift. Treat them as high-probability for the next tier.
+              Matched by word overlap, so a question reworded between shifts is still caught. Treat these
+              as high-probability for the next tier.
             </p>
           </div>
           {analysis.repeated.length === 0 ? (
             <p className="px-5 py-6 text-sm text-zinc-500">
-              No repeated questions reported yet. Add a second shift to see the overlap.
+              No repeats found yet. Repeats show up once the same question appears in two or more shifts.
             </p>
           ) : (
             <ul className="divide-y divide-zinc-800/60">
@@ -82,6 +104,15 @@ export default async function ExamAnalysisPage() {
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span className="text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-full">
                       Seen in {r.timesSeen} shifts
+                    </span>
+                    <span
+                      className={`text-[10px] border px-2 py-0.5 rounded-full ${
+                        r.matchKind === "exact"
+                          ? "border-zinc-700 bg-zinc-900 text-zinc-300"
+                          : "border-amber-500/25 bg-amber-500/10 text-amber-300"
+                      }`}
+                    >
+                      {r.matchKind === "exact" ? "identical" : `${r.similarity}% match`}
                     </span>
                     <span className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-0.5 rounded-full">
                       {r.topic}
@@ -92,6 +123,20 @@ export default async function ExamAnalysisPage() {
                     <span className={`text-[10px] ${SECTION_ACCENT[r.section] || "text-zinc-400"}`}>{r.section}</span>
                   </div>
                   <p className="text-sm text-zinc-100 leading-relaxed">{r.question}</p>
+                  {r.variants.length > 1 && (
+                    <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5">
+                      <p className="text-[10px] text-amber-300/80 mb-1">Also worded as</p>
+                      <ul className="space-y-1">
+                        {r.variants
+                          .filter((v) => v !== r.question)
+                          .map((v) => (
+                            <li key={v} className="text-xs text-zinc-300 leading-relaxed">
+                              {v}
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
                   {r.options && r.options.length > 0 && (
                     <ul className="mt-2 grid sm:grid-cols-2 gap-1">
                       {r.options.map((o, i) => (
@@ -115,7 +160,10 @@ export default async function ExamAnalysisPage() {
             </ul>
           )}
         </section>
+        )}
 
+        {hasData && (
+        <>
         <div className="grid lg:grid-cols-2 gap-6">
           <section className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-zinc-800 bg-zinc-950">
@@ -241,6 +289,8 @@ export default async function ExamAnalysisPage() {
             </div>
           )}
         </section>
+        </>
+        )}
 
         <ShiftEditor />
       </div>
