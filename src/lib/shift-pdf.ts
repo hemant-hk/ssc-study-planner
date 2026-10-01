@@ -62,7 +62,15 @@ export interface ParsedShift {
   questions: ShiftQuestion[];
   /** Pages whose text could not be read, e.g. a scanned image page. */
   unreadablePages: number[];
+  /** How many page groups the paper was split into, for the admin's benefit. */
+  chunkCount: number;
+  /** Per-chunk failure detail, so a partial read is explainable. */
+  failedChunks: string[];
 }
+
+type ChunkResult =
+  | { ok: true; index: number; extraction: RawExtraction }
+  | { ok: false; index: number; pages: number[]; message: string };
 
 /**
  * Parse the PDF buffer into per-page text.
@@ -233,21 +241,58 @@ export async function parseShiftPdf(buf: ArrayBuffer, fallbackName: string): Pro
     );
   }
 
-  const chunks = chunkPages(pages);
-  const extractions: RawExtraction[] = [];
-  const failures: string[] = [];
+  // Per-page character counts: the difference between "pdf-parse found no text"
+  // and "the model was rate limited" decides whether a partial read is the
+  // paper's fault or ours, and that was impossible to tell from the outside.
+  const textStats = pages
+    .map((p) => `${p.num}:${p.text.length}`)
+    .join(" ");
+  console.log(
+    `[shift-pdf] pages=${total} withText=${pages.length} chars=${pages.reduce((a, p) => a + p.text.length, 0)} [${textStats}]`
+  );
 
-  for (const chunk of chunks) {
+  // Chunks run one at a time. These are sequential page-sized model calls, and
+  // firing many concurrently is what trips the rate limiter and loses whole
+  // chunks — slower, but it keeps every page of a 25-page paper.
+  let extractionsSeen = 0;
+  const chunks = chunkPages(pages);
+
+  // Status is recorded per chunk *index*. Previously failures were pushed into a
+  // flat array, so `failures[i]` was the i-th failure rather than the i-th
+  // chunk: two failures anywhere shifted every later index, marking healthy
+  // chunks as unreadable and the actually-failed ones as read. A 25-page paper
+  // then reported nearly all pages skipped while most had parsed fine.
+  const results: ChunkResult[] = [];
+  for (const [index, chunk] of chunks.entries()) {
     try {
       const raw = await callGeminiSchema<RawExtraction>(
-        buildChunkPrompt(chunk, extractions.length === 0),
+        buildChunkPrompt(chunk, extractionsSeen === 0),
         EXTRACTION_SCHEMA
       );
-      extractions.push(raw ?? {});
+      extractionsSeen += 1;
+      results.push({ ok: true, extraction: raw ?? {}, index });
     } catch (err) {
-      // Keep going: a rate-limited chunk should not discard the chunks that did
-      // succeed, but the caller needs to know the paper is only partly read.
-      failures.push(err instanceof Error ? err.message : String(err));
+      // Keep going: one rate-limited chunk must not discard the chunks that
+      // succeeded, but the caller has to learn the paper is only partly read.
+      results.push({
+        ok: false,
+        index,
+        pages: chunk.map((p) => p.num),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const extractions: RawExtraction[] = [];
+  const failures: string[] = [];
+  const readChunks = new Set<number>();
+
+  for (const r of results) {
+    if (r.ok) {
+      readChunks.add(r.index);
+      extractions.push(r.extraction);
+    } else {
+      failures.push(`pages ${r.pages.join(",")}: ${r.message}`);
     }
   }
 
@@ -263,15 +308,32 @@ export async function parseShiftPdf(buf: ArrayBuffer, fallbackName: string): Pro
     throw new ShiftPdfError("No questions found in this PDF", 422);
   }
 
-  const readPages = new Set(chunks.filter((_, i) => !failures[i]).flatMap((c) => c.map((p) => p.num)));
+  // Distinguish the two reasons a page can be missing, because they need very
+  // different fixes from the admin. A page with no extracted text is a scanned
+  // image and will never be readable; a page whose text was sent but whose chunk
+  // failed is recoverable by re-uploading once the rate limit clears.
+  const textPages = new Set(pages.map((p) => p.num));
+  const readPages = new Set(
+    chunks.filter((_, i) => readChunks.has(i)).flatMap((c) => c.map((p) => p.num))
+  );
   const unreadablePages: number[] = [];
-  for (let n = 1; n <= total; n += 1) if (!readPages.has(n)) unreadablePages.push(n);
+  for (let n = 1; n <= total; n += 1) {
+    if (!readPages.has(n) && textPages.has(n)) unreadablePages.push(n);
+  }
+
+  console.log(
+    `[shift-pdf] chunks=${chunks.length} read=${readChunks.size} questions=${questions.length} ` +
+      `noTextPages=${[...textPages].length ? [...Array(total).keys()].map((i) => i + 1).filter((n) => !textPages.has(n)).join(",") || "none" : "none"} ` +
+      `failedChunks=${failures.length ? failures.join(" | ") : "none"}`
+  );
 
   return {
     shiftName: pickShiftName(extractions, fallbackName),
     examDate: pickExamDate(extractions),
     questions,
     unreadablePages,
+    chunkCount: chunks.length,
+    failedChunks: failures,
   };
 }
 

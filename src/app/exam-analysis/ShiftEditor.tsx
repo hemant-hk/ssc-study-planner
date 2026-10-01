@@ -164,11 +164,22 @@ export default function ShiftEditor() {
         setShiftId(result.shift?.id || "");
       }
       setFile(null);
+      const count = result.shift?.questions?.length ?? 0;
       const unread = Array.isArray(result.unreadablePages) ? result.unreadablePages : [];
-      setStatus(
-        `Parsed ${result.shift?.questions?.length ?? 0} questions from "${result.shift?.name}".` +
-          (unread.length > 0 ? ` Pages not read: ${unread.join(", ")}.` : "")
-      );
+      const failed = Array.isArray(result.failedChunks) ? result.failedChunks.length : 0;
+      const parts = [`Read ${count} question${count === 1 ? "" : "s"} from "${result.shift?.name}"`];
+      if (failed > 0) {
+        // The AI was rate-limited, so the paper was only partly read. Say so
+        // plainly: the questions that did come through are saved, and a
+        // re-upload fills the rest once the limit clears.
+        parts.push(
+          `${failed} page group${failed === 1 ? "" : "s"} hit the AI rate limit — re-upload to fill the gaps`
+        );
+      }
+      if (unread.length > 0) {
+        parts.push(`no text layer on pages ${unread.join(", ")} (scanned image?)`);
+      }
+      setStatus(`${parts.join(". ")}.`);
     } catch {
       setStatus("Upload failed");
     } finally {
