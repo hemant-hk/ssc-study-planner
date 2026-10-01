@@ -8,6 +8,8 @@ import { EXAM_SECTIONS, type ExamShiftData, type ShiftDifficulty } from "@/lib/e
 export default function ShiftEditor() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [token, setToken] = useState("");
+  const [password, setPassword] = useState("");
+  const [checking, setChecking] = useState(false);
   const [data, setData] = useState<ExamShiftData | null>(null);
   const [shiftId, setShiftId] = useState("");
   const [status, setStatus] = useState("");
@@ -22,8 +24,49 @@ export default function ShiftEditor() {
   });
 
   useEffect(() => {
-    setIsAdmin(localStorage.getItem("isAdmin") === "true");
+    const flag = localStorage.getItem("isAdmin") === "true";
+    setIsAdmin(flag);
+    // The password was captured at login time on the study page. Reuse it so an
+    // admin is not asked to retype it, and so the upload does not fail with a
+    // bare 403 while looking like it should just work.
+    const stored = localStorage.getItem("adminToken");
+    if (flag && stored) setToken(stored);
   }, []);
+
+  // Verify the password against the admin login endpoint rather than trusting the
+  // localStorage flag alone: that flag is client-side and trivially forgeable, so
+  // treating it as proof of access is what let this panel look broken to a real
+  // admin arriving without a prior study-page login.
+  async function unlock() {
+    if (!password) {
+      setStatus("Enter the admin password");
+      return;
+    }
+    setChecking(true);
+    setStatus("Checking…");
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.success) {
+        setStatus(body.error || "Invalid password");
+        return;
+      }
+      localStorage.setItem("isAdmin", "true");
+      localStorage.setItem("adminToken", password);
+      setToken(password);
+      setPassword("");
+      setIsAdmin(true);
+      setStatus("Unlocked");
+    } catch {
+      setStatus("Login failed");
+    } finally {
+      setChecking(false);
+    }
+  }
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -37,8 +80,6 @@ export default function ShiftEditor() {
       })
       .catch(() => setStatus("Could not load shifts"));
   }, [isAdmin]);
-
-  if (!isAdmin) return null;
 
   async function save(next: ExamShiftData) {
     setSaving(true);
@@ -146,6 +187,51 @@ export default function ShiftEditor() {
     setShiftId(id);
   }
 
+  // The panel is always rendered but stays inert until the admin password is
+  // verified here. Returning null outright left a real admin staring at a page
+  // with no upload control at all, with nothing to click and nothing explaining
+  // why — the localStorage flag is only ever set by logging in on /study.
+  if (!isAdmin) {
+    return (
+      <section className="bg-[#0a0a0c] border border-indigo-500/20 rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Admin: Shift Ingest</h2>
+            <p className="text-[11px] text-zinc-400 mt-0.5">
+              Upload a shift paper or type questions in. Admin password required.
+            </p>
+          </div>
+          <span className="text-[10px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+            Locked
+          </span>
+        </div>
+        <div className="p-5 flex flex-wrap items-end gap-3">
+          <label className="flex-1 min-w-[200px]">
+            <span className="block text-[11px] text-zinc-400 mb-1">Admin password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void unlock();
+              }}
+              placeholder="Required"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/40"
+            />
+          </label>
+          <button
+            onClick={unlock}
+            disabled={checking}
+            className="text-sm bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            {checking ? "Checking…" : "Unlock"}
+          </button>
+          {status && <span className="text-xs text-zinc-400">{status}</span>}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="bg-[#0a0a0c] border border-indigo-500/20 rounded-2xl overflow-hidden">
       <div className="px-5 py-4 border-b border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between gap-3">
@@ -171,19 +257,29 @@ export default function ShiftEditor() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex-1 min-w-[220px]">
-              <span className="sr-only">Shift PDF</span>
+              <span className="block text-[11px] text-zinc-400 mb-1">
+                Shift paper (PDF)
+                {file && <span className="text-zinc-300"> · {file.name}</span>}
+              </span>
               <input
                 type="file"
                 accept="application/pdf,.pdf"
                 disabled={uploading}
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null);
+                  setStatus("");
+                }}
                 className="block w-full text-xs text-zinc-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:text-zinc-200 file:text-xs file:font-medium hover:file:bg-zinc-700 disabled:opacity-50"
               />
             </label>
+            {/* Never disabled on `!file`: a greyed-out button with no hint is
+                what made this look broken. Only the in-flight state disables it,
+                and clicking without a file explains what is missing. */}
             <button
+              type="button"
               onClick={uploadPdf}
-              disabled={uploading || !file}
-              className="text-sm bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+              disabled={uploading}
+              className="text-sm bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-wait text-white font-medium px-4 py-2 rounded-lg transition-colors"
             >
               {uploading ? "Parsing…" : "Parse & add shift"}
             </button>
@@ -192,12 +288,15 @@ export default function ShiftEditor() {
 
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 min-w-[200px]">
-            <span className="block text-[11px] text-zinc-400 mb-1">Admin password</span>
+            <span className="block text-[11px] text-zinc-400 mb-1">
+              Admin password
+              <span className="text-zinc-600"> (kept from login, only needed if you changed it)</span>
+            </span>
             <input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="Required to save"
+              placeholder="Auto-filled after unlock"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/40"
             />
           </label>
