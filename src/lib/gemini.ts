@@ -214,7 +214,9 @@ export async function callGroq(
 export async function callGemini(
   prompt: string,
   maxTokens: number,
-  requireJSON = true
+  requireJSON = true,
+  responseSchema?: Record<string, unknown>,
+  temperature?: number
 ): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your_gemini_api_key_here") {
@@ -237,7 +239,14 @@ export async function callGemini(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               contents: [{ role: "user", parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens },
+              generationConfig: {
+                temperature: temperature ?? 0.7,
+                maxOutputTokens: maxTokens,
+                // Constraining the shape server-side is what makes bulk
+                // extraction reliable; without it the model drifts into prose
+                // or renames fields and the parse fails on a long batch.
+                ...(responseSchema ? { responseMimeType: "application/json", responseSchema } : {}),
+              },
             }),
             signal: AbortSignal.timeout(120000),
           }
@@ -289,6 +298,21 @@ export async function callGemini(
 // Provider fallback chain: Groq is the fast, reliable primary; if it rate
 // limits (429) we switch to Gemini; if Gemini also fails we go back to Groq
 // once more before giving up.
+/**
+ * Structured-output wrapper around callGemini.
+ *
+ * Bulk extraction is pinned to Gemini rather than routed through the Groq-first
+ * callAI chain: Gemini is the only provider here that accepts a responseSchema,
+ * and without one a 40-question batch drifts into prose or renames fields.
+ * Temperature is pinned to 0 so re-running the same PDF yields the same
+ * questions — otherwise every re-upload would look like a different shift and
+ * the cross-shift repeat detection would disagree with itself.
+ */
+export async function callGeminiSchema<T>(prompt: string, schema: Record<string, unknown>): Promise<T> {
+  const text = await callGemini(prompt, 8192, true, schema, 0);
+  return JSON.parse(sanitizeJson(text)) as T;
+}
+
 async function callAI(
   prompt: string,
   maxTokens: number,
