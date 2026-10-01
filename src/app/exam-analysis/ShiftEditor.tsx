@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { EXAM_SECTIONS, type ExamShiftData, type ShiftDifficulty } from "@/lib/exam-shifts-types";
+import {
+  EXAM_SECTIONS,
+  type BatchExtraction,
+  type ExamShiftData,
+  type PageBatch,
+  type ShiftDifficulty,
+} from "@/lib/exam-shifts-types";
 
 // Admin-only panel for feeding the live paper in. Hidden entirely for everyone
 // else, so the section stays read-only for aspirants.
@@ -15,6 +21,7 @@ export default function ShiftEditor() {
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [draft, setDraft] = useState({
     question: "",
@@ -145,18 +152,73 @@ export default function ShiftEditor() {
       return;
     }
     setUploading(true);
-    setStatus(`Reading ${file.name}… a full shift takes a minute or two.`);
+    setProgress(null);
+    setStatus("Reading the paper…");
     try {
-      const body = new FormData();
-      body.append("file", file);
-      const res = await fetch("/api/admin/parse-shift-pdf", {
+      // Ask the server how it plans to split this paper. The loop itself runs
+      // here rather than on the server because one request that OCRs a whole
+      // paper outlives the platform's per-request execution ceiling — that was
+      // the 504. One batch per request keeps every call short and lets a single
+      // failed batch be retried without redoing the rest.
+      const initBody = new FormData();
+      initBody.append("file", file);
+      const initRes = await fetch("/api/admin/shift-pdf/init", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
-        body,
+        body: initBody,
       });
-      const result = await res.json();
-      if (!res.ok) {
-        setStatus(result.error || "Upload failed");
+      const plan = await initRes.json();
+      if (!initRes.ok) {
+        setStatus(plan.error || "Could not read that PDF");
+        return;
+      }
+
+      const batches: BatchExtraction[] = [];
+      const failed: string[] = [];
+
+      for (const batch of plan.batches as PageBatch[]) {
+        setProgress({ done: batch.index, total: plan.batchCount });
+        setStatus(
+          `Processing batch ${batch.index + 1} of ${plan.batchCount} (pages ${batch.pages[0]}–${batch.pages[batch.pages.length - 1]})…`
+        );
+        const body = new FormData();
+        body.append("file", file);
+        body.append("batch", String(batch.index));
+        body.append("pages", batch.pages.join(","));
+        body.append("isFirst", String(batch.index === 0));
+        const res = await fetch("/api/admin/shift-pdf/process-chunk", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body,
+        });
+        const result = await res.json();
+        if (res.ok && result.extraction) {
+          batches.push(result.extraction as BatchExtraction);
+        } else {
+          // Keep going: the batches that did come through are still worth
+          // saving, and the report below names which pages are missing.
+          failed.push(`pages ${batch.pages.join(",")}: ${result.error || "failed"}`);
+        }
+        // Pace the batches. These are back-to-back multi-megabyte model calls,
+        // and firing them with no gap is what trips the provider's per-minute
+        // ceiling — which is also what this loop replaced.
+        if (batch.index < plan.batchCount - 1) await new Promise((r) => setTimeout(r, 2000));
+      }
+
+      if (batches.length === 0) {
+        setStatus(failed[0] || "No batch of that paper could be read");
+        return;
+      }
+
+      setStatus(`Saving ${batches.length} of ${plan.batchCount} batches…`);
+      const commitRes = await fetch("/api/admin/shift-pdf/commit", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ fallbackName: file.name.replace(/\.pdf$/i, ""), batches }),
+      });
+      const result = await commitRes.json();
+      if (!commitRes.ok) {
+        setStatus(result.error || "Could not save the shift");
         return;
       }
       if (result.data) {
@@ -164,20 +226,15 @@ export default function ShiftEditor() {
         setShiftId(result.shift?.id || "");
       }
       setFile(null);
+      setProgress({ done: plan.batchCount, total: plan.batchCount });
       const count = result.shift?.questions?.length ?? 0;
-      const unread = Array.isArray(result.unreadablePages) ? result.unreadablePages : [];
-      const failed = Array.isArray(result.failedChunks) ? result.failedChunks.length : 0;
       const parts = [`Read ${count} question${count === 1 ? "" : "s"} from "${result.shift?.name}"`];
-      if (failed > 0) {
-        // The AI was rate-limited, so the paper was only partly read. Say so
-        // plainly: the questions that did come through are saved, and a
-        // re-upload fills the rest once the limit clears.
+      if (failed.length > 0) {
+        // Some batches hit the rate limit, so the paper was only partly read.
+        // Say which pages are missing rather than implying a complete paper.
         parts.push(
-          `${failed} page group${failed === 1 ? "" : "s"} hit the AI rate limit — re-upload to fill the gaps`
+          `${failed.length} of ${plan.batchCount} batches hit the AI rate limit (${failed.join("; ")}) — re-upload to fill the gaps`
         );
-      }
-      if (unread.length > 0) {
-        parts.push(`no text layer on pages ${unread.join(", ")} (scanned image?)`);
       }
       setStatus(`${parts.join(". ")}.`);
     } catch {
@@ -295,6 +352,32 @@ export default function ShiftEditor() {
               {uploading ? "Parsing…" : "Parse & add shift"}
             </button>
           </div>
+
+          {/* The parse runs one request per batch from the browser, so the wait
+              is now visible instead of a single opaque "Parsing…". Without this
+              a 28-page paper looks identical whether it is 20% or 90% done. */}
+          {uploading && progress && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                <span>
+                  Batch {Math.min(progress.done + 1, progress.total)} of {progress.total}
+                </span>
+                <span>{Math.round((progress.done / progress.total) * 100)}%</span>
+              </div>
+              <div
+                className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round((progress.done / progress.total) * 100)}
+              >
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-300"
+                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
