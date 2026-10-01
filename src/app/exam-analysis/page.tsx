@@ -1,6 +1,7 @@
 import AppHeader from "@/components/AppHeader";
 import { loadExamShifts, EXAM_SECTIONS } from "@/lib/exam-shifts-store";
 import { analyze } from "@/lib/exam-analysis";
+import { findCoreConcepts, findPredictionGaps } from "@/lib/shift-trends";
 import ShiftEditor from "./ShiftEditor";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,8 @@ export default async function ExamAnalysisPage() {
   const data = await loadExamShifts();
   const analysis = analyze(data);
   const hasData = data.shifts.some((s) => s.questions.length > 0);
+  const coreConcepts = hasData ? findCoreConcepts(data.shifts) : [];
+  const predictionGaps = hasData ? findPredictionGaps(data.shifts) : [];
   const updatedLabel = analysis.updatedAt
     ? new Date(analysis.updatedAt).toLocaleDateString("en-IN", {
         day: "numeric",
@@ -234,6 +237,81 @@ export default async function ExamAnalysisPage() {
               </ul>
             </section>
           </div>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-6">
+          <section className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-zinc-800 bg-zinc-950">
+              <h2 className="text-sm font-semibold text-zinc-100">Repeated Core Concepts</h2>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Concepts the exam has circled in more than one shift. Grouped on word overlap, so a
+                reworded repeat counts.
+              </p>
+            </div>
+            {coreConcepts.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-zinc-500">
+                No concept has repeated yet. This fills in once the same question appears in two shifts.
+              </p>
+            ) : (
+              <ul className="divide-y divide-zinc-800/60">
+                {coreConcepts.map((c) => (
+                  <li key={c.label} className="px-5 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-sm text-zinc-200 leading-snug">{c.label}</span>
+                      <span className="text-[11px] text-zinc-400 shrink-0">
+                        {c.shifts.length} shifts
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                      <span className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+                        {c.topic}
+                      </span>
+                      <span className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+                        {c.reworded ? `${Math.round(c.score * 100)}% overlap` : "identical wording"}
+                      </span>
+                      <span className="text-[10px] text-zinc-500">{c.shifts.join(" · ")}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-zinc-800 bg-zinc-950">
+              <h2 className="text-sm font-semibold text-zinc-100">Next Shift Prediction Gaps</h2>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Standard CGL topics with no question recorded in any shift yet. Weighted by how many
+                questions they usually take.
+              </p>
+            </div>
+            {predictionGaps.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-zinc-500">
+                Every syllabus topic on record has appeared at least once.
+              </p>
+            ) : (
+              <ul className="divide-y divide-zinc-800/60">
+                {predictionGaps.map((g) => (
+                  <li key={g.topic} className="px-5 py-2.5 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="text-sm text-zinc-200">{g.topic}</span>
+                      <span className={`text-[10px] ml-2 ${SECTION_ACCENT[g.section] || "text-zinc-500"}`}>
+                        {g.section}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 shrink-0 flex gap-0.5" title={`Weight ${g.weight} of 5`}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <span
+                          key={n}
+                          className={`w-1.5 h-1.5 rounded-full ${n <= g.weight ? "bg-amber-400" : "bg-zinc-800"}`}
+                        />
+                      ))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
         <section className="bg-[#0a0a0c] border border-zinc-800 rounded-2xl overflow-hidden">

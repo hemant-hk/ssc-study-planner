@@ -12,6 +12,8 @@ export default function ShiftEditor() {
   const [shiftId, setShiftId] = useState("");
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
   const [draft, setDraft] = useState({
     question: "",
     topic: "",
@@ -92,6 +94,47 @@ export default function ShiftEditor() {
     void save({ ...data, shifts });
   }
 
+  async function uploadPdf() {
+    if (!file) {
+      setStatus("Choose a PDF first");
+      return;
+    }
+    if (!token.trim()) {
+      setStatus("Admin password is required to upload");
+      return;
+    }
+    setUploading(true);
+    setStatus(`Reading ${file.name}… a full shift takes a minute or two.`);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/admin/parse-shift-pdf", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setStatus(result.error || "Upload failed");
+        return;
+      }
+      if (result.data) {
+        setData(result.data);
+        setShiftId(result.shift?.id || "");
+      }
+      setFile(null);
+      const unread = Array.isArray(result.unreadablePages) ? result.unreadablePages : [];
+      setStatus(
+        `Parsed ${result.shift?.questions?.length ?? 0} questions from "${result.shift?.name}".` +
+          (unread.length > 0 ? ` Pages not read: ${unread.join(", ")}.` : "")
+      );
+    } catch {
+      setStatus("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   function addShift() {
     if (!data) return;
     let n = data.shifts.length + 1;
@@ -118,6 +161,35 @@ export default function ShiftEditor() {
       </div>
 
       <div className="p-5 space-y-4">
+        <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.04] p-4 space-y-3">
+          <div>
+            <h3 className="text-xs font-semibold text-zinc-100">Upload Shift PDF</h3>
+            <p className="text-[11px] text-zinc-400 mt-0.5">
+              Drops the paper straight into RAM, reads it with Gemini, and appends the shift to the board.
+              Nothing is written to disk. Re-uploading the same shift name replaces it.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex-1 min-w-[220px]">
+              <span className="sr-only">Shift PDF</span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                disabled={uploading}
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-xs text-zinc-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:text-zinc-200 file:text-xs file:font-medium hover:file:bg-zinc-700 disabled:opacity-50"
+              />
+            </label>
+            <button
+              onClick={uploadPdf}
+              disabled={uploading || !file}
+              className="text-sm bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              {uploading ? "Parsing…" : "Parse & add shift"}
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 min-w-[200px]">
             <span className="block text-[11px] text-zinc-400 mb-1">Admin password</span>
