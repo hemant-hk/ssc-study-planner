@@ -17,7 +17,7 @@
 // options and explanations is far larger than one response can hold, and a
 // single 20MB upload as base64 blows past the inline request limit besides.
 import { PDFParse } from "pdf-parse";
-import { callGeminiSchema, type GeminiPart } from "./gemini";
+import { AIProviderError, callGeminiSchema, type GeminiPart } from "./gemini";
 import {
   EXAM_SECTIONS,
   type ExamShift,
@@ -38,6 +38,15 @@ const PAGE_IMAGE_WIDTH = 1400;
 // Each question now carries four options, an answer and an explanation, so a
 // batch costs far more output than the old question-only schema.
 const CHUNK_OUTPUT_TOKENS = 16000;
+
+// Gap between batches, to stay under the Gemini free tier's requests-per-minute
+// ceiling. Deliberately well clear of the limit rather than tuned against it.
+const INTER_CHUNK_DELAY_MS = 2000;
+
+// One retry, after a pause long enough for the per-minute window to roll over.
+// A 429 here is a rate limit, not a bad request, so it is the one error worth
+// re-sending: the batch is idempotent and a short wait usually clears it.
+const RATE_LIMIT_RETRY_MS = 5000;
 
 const SUBJECT_TO_SECTION: Record<string, string> = {
   quant: "Quantitative Aptitude",
@@ -272,12 +281,38 @@ ${isFirst ? '- shiftName and examDate: fill these only if this first chunk actua
   return parts;
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Extract one batch, retrying once if it is rate limited.
+ *
+ * `callGeminiSchema` already retries twice per model, but with a 1s/2s backoff
+ * that is far shorter than a free-tier per-minute window takes to reset — so a
+ * batch that trips the quota comes back already exhausted and is lost with the
+ * rest of that page range. One wait long enough to actually clear the window is
+ * what turns a lost batch into a slow one.
+ */
+async function callChunkWithRetry(parts: GeminiPart[], index: number): Promise<RawExtraction> {
+  try {
+    return await callGeminiSchema<RawExtraction>("", EXTRACTION_SCHEMA, CHUNK_OUTPUT_TOKENS, parts);
+  } catch (err) {
+    if (!isRateLimited(err)) throw err;
+    console.log(`[shift-pdf] batch ${index + 1} rate limited, waiting ${RATE_LIMIT_RETRY_MS}ms to retry`);
+    await sleep(RATE_LIMIT_RETRY_MS);
+    return callGeminiSchema<RawExtraction>("", EXTRACTION_SCHEMA, CHUNK_OUTPUT_TOKENS, parts);
+  }
+}
+
+/** Only a 429 is worth re-sending; a schema or auth failure will fail again. */
+function isRateLimited(err: unknown): boolean {
+  return err instanceof AIProviderError && err.status === 429;
+}
+
 /**
  * Parse an uploaded shift PDF into structured questions.
  *
  * `fallbackName` labels the shift when the paper never prints one.
- */
-export async function parseShiftPdf(buf: ArrayBuffer, fallbackName: string): Promise<ParsedShift> {
+ */export async function parseShiftPdf(buf: ArrayBuffer, fallbackName: string): Promise<ParsedShift> {
   // One parse only: the buffer is transferred to pdf.js' worker, so a second
   // pass would read detached memory.
   const pages = await extractPdfPages(buf);
@@ -293,9 +328,10 @@ export async function parseShiftPdf(buf: ArrayBuffer, fallbackName: string): Pro
       `[${pages.map((p) => `${p.num}:${Math.round(p.png.length / 1024)}k`).join(" ")}]`
   );
 
-  // Chunks run one at a time. Each batch is a multi-megabyte image request, so
-  // firing several at once is what exhausts the rate limit and loses whole
-  // batches — slower, but it keeps every page of a 28-page paper.
+  // Chunks run one at a time inside a plain for..of loop, deliberately. Each
+  // batch is a multi-megabyte image request, and the Gemini free tier counts
+  // requests per minute: firing batches in parallel trips the quota and every
+  // concurrent batch then fails together, losing whole pages of the paper.
   let extractionsSeen = 0;
   const chunks = chunkPages(pages);
 
@@ -306,16 +342,16 @@ export async function parseShiftPdf(buf: ArrayBuffer, fallbackName: string): Pro
   // then reported nearly all pages skipped while most had parsed fine.
   const results: ChunkResult[] = [];
   for (const [index, chunk] of chunks.entries()) {
+    // Pace the batches. Sequential alone is not enough: an OCR call returns in a
+    // few seconds, so a 28-page paper would otherwise fire its five batches back
+    // to back and collide with the free tier's per-minute request ceiling.
+    // Skipped before the first batch so an upload is not delayed for nothing.
+    if (index > 0) await sleep(INTER_CHUNK_DELAY_MS);
     try {
       const parts = buildChunkParts(chunk, extractionsSeen === 0);
-      const raw = await callGeminiSchema<RawExtraction>(
-        "",
-        EXTRACTION_SCHEMA,
-        CHUNK_OUTPUT_TOKENS,
-        parts
-      );
+      const raw = await callChunkWithRetry(parts, index);
       extractionsSeen += 1;
-      results.push({ ok: true, extraction: raw ?? {}, index });
+      results.push({ ok: true, extraction: raw, index });
     } catch (err) {
       // Keep going: one rate-limited chunk must not discard the chunks that
       // succeeded, but the caller has to learn the paper is only partly read.
