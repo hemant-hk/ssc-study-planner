@@ -1,5 +1,6 @@
 import AppHeader from "@/components/AppHeader";
 import { loadExamShifts, EXAM_SECTIONS } from "@/lib/exam-shifts-store";
+import type { ShiftQuestion } from "@/lib/exam-shifts-types";
 import { analyze } from "@/lib/exam-analysis";
 import { findCoreConcepts, findPredictionGaps } from "@/lib/shift-trends";
 import ShiftEditor from "./ShiftEditor";
@@ -18,6 +19,86 @@ const SECTION_ACCENT: Record<string, string> = {
   "Quantitative Aptitude": "text-amber-300",
   "English Comprehension": "text-emerald-300",
 };
+
+/**
+ * One question. The stem is always visible; the options and explanation only
+ * load into view on click, because a 100-question shift would otherwise be a
+ * wall of text nobody reads.
+ */
+function ShiftQuestionRow({ q, index }: { q: ShiftQuestion; index: number }) {
+  const options = q.options ?? [];
+  // Only trust a stored index that still points at a real option. A paper
+  // re-uploaded with fewer options can leave the old index dangling, and
+  // highlighting nothing while claiming an answer is the safe failure here.
+  const answerIndex =
+    typeof q.correctAnswer === "number" && q.correctAnswer >= 0 && q.correctAnswer < options.length
+      ? q.correctAnswer
+      : null;
+  const LETTERS = ["(1)", "(2)", "(3)", "(4)", "(5)"];
+
+  return (
+    <details className="group/q">
+      <summary className="cursor-pointer list-none">
+        <p className="text-sm text-zinc-200 leading-relaxed group-open/q:text-zinc-100">{q.question}</p>
+        {options.length > 0 && (
+          <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-zinc-500 group-open/q:hidden">
+            <span>Show {options.length} options</span>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </span>
+        )}
+      </summary>
+
+      {options.length > 0 && (
+        <ul className="mt-2.5 space-y-1.5">
+          {options.map((opt, oi) => {
+            const isAnswer = oi === answerIndex;
+            return (
+              <li
+                key={`${q.id}-opt-${oi}`}
+                className={`flex items-start gap-2.5 rounded-md border px-2.5 py-2 text-[13px] leading-relaxed ${
+                  isAnswer
+                    ? "border-emerald-500/40 bg-emerald-500/[0.07] text-emerald-100"
+                    : "border-zinc-800/80 bg-white/[0.015] text-zinc-300"
+                }`}
+              >
+                <span className={isAnswer ? "text-emerald-400 font-medium shrink-0" : "text-zinc-500 shrink-0"}>
+                  {LETTERS[oi] ?? `(${oi + 1})`}
+                </span>
+                <span className="flex-1">{opt}</span>
+                {isAnswer && (
+                  <span className="shrink-0 text-[10px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded-full">
+                    Answer
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {q.explanation && (
+        <p className="mt-2.5 rounded-md border border-zinc-800/70 bg-white/[0.02] px-3 py-2 text-[12.5px] leading-relaxed text-zinc-400">
+          {q.explanation}
+        </p>
+      )}
+
+      {options.length > 0 && answerIndex === null && (
+        <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-300/90">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v2m0 4h.01M10.29 3.86l-8.15 14A2 2 0 004.86 21h14.28a2 2 0 001.72-3.14l-8.15-14a2 2 0 00-3.42 0z"
+            />
+          </svg>
+          Unmarked in PDF — no answer key was printed for this question
+        </p>
+      )}
+    </details>
+  );
+}
 
 export default async function ExamAnalysisPage() {
   const data = await loadExamShifts();
@@ -358,7 +439,7 @@ export default async function ExamAnalysisPage() {
                           </span>
                           <span className={`text-[10px] ${SECTION_ACCENT[q.section] || "text-zinc-400"}`}>{q.section}</span>
                         </div>
-                        <p className="text-sm text-zinc-200 leading-relaxed">{q.question}</p>
+                        <ShiftQuestionRow q={q} index={i} />
                       </li>
                     ))}
                   </ul>

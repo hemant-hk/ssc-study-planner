@@ -218,8 +218,32 @@ export async function callGemini(
   responseSchema?: Record<string, unknown>,
   temperature?: number
 ): Promise<string> {
+  return callGeminiParts([{ text: prompt }], maxTokens, requireJSON, responseSchema, temperature);
+}
+
+/** One piece of a multimodal request: plain text, or inline binary data. */
+export type GeminiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+/**
+ * Gemini call that accepts inline binary parts alongside text.
+ *
+ * Passing whole pages as `inlineData` is what makes the model OCR scanned
+ * papers itself. A shift paper is mostly page images with no text layer at all,
+ * so any text extracted from the file is empty and the model is the only thing
+ * that can read the page. Keeping this separate from callGemini avoids threading
+ * a parts array through every text-only caller.
+ */
+export async function callGeminiParts(
+  parts: GeminiPart[],
+  maxTokens: number,
+  requireJSON = true,
+  responseSchema?: Record<string, unknown>,
+  temperature?: number
+): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "your_gemini_api_key_here") {
+  if (!apiKey || apiKey === "your_gemini_api_key_placeholder") {
     throw new AIProviderError("GEMINI_API_KEY is not configured", 500);
   }
   const models = (process.env.GEMINI_MODELS || "gemini-3.6-flash,gemini-3.1-pro-preview")
@@ -238,7 +262,7 @@ export async function callGemini(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: prompt }] }],
+              contents: [{ role: "user", parts }],
               generationConfig: {
                 temperature: temperature ?? 0.7,
                 maxOutputTokens: maxTokens,
@@ -308,8 +332,16 @@ export async function callGemini(
  * questions — otherwise every re-upload would look like a different shift and
  * the cross-shift repeat detection would disagree with itself.
  */
-export async function callGeminiSchema<T>(prompt: string, schema: Record<string, unknown>): Promise<T> {
-  const text = await callGemini(prompt, 8192, true, schema, 0);
+export async function callGeminiSchema<T>(
+  prompt: string,
+  schema: Record<string, unknown>,
+  maxTokens = 8192,
+  parts?: GeminiPart[]
+): Promise<T> {
+  // Cap below the model's hard limit so a long paper cannot silently truncate
+  // mid-batch: `callGemini` treats MAX_TOKENS as a failure and retries, but the
+  // batch is simply lost rather than shortened.
+  const text = await callGeminiParts(parts ?? [{ text: prompt }], maxTokens, true, schema, 0);
   return JSON.parse(sanitizeJson(text)) as T;
 }
 
