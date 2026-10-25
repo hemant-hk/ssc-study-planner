@@ -16,8 +16,8 @@ official source.
 - **Ask AI** (`/ask`) — chat assistant answering plain-language questions
   ("literacy rate of Kerala", "how do I file an RTI") from a curated fact base,
   with cited sources and related resources. Runs fully client-side.
-- **Explore** (`/explore`) — 43 official sources in 7 categories with filters.
-- **Datasets** (`/datasets`) — 20-entry catalog with format filters
+- **Explore** (`/explore`) — 54 official sources in 8 categories with filters.
+- **Datasets** (`/datasets`) — 27-entry catalog with format filters
   (API / CSV / Dashboard / PDF / Web).
 - Static-first: every route prerendered; no accounts, no server-side storage.
 
@@ -41,7 +41,7 @@ src/
 ├── app/            # /, /search, /ask, /explore, /datasets
 ├── components/     # layout, SearchBar, ResultCard, AskChat
 ├── lib/
-│   ├── resources.ts  # 43 curated official sources by category
+│   ├── resources.ts  # 54 curated official sources by category
 │   ├── datasets.ts   # dataset catalog
 │   ├── facts.ts      # published statistics + state census facts
 │   ├── search.ts     # intent/entity analysis + scoring engine

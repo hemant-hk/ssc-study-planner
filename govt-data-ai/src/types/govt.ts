@@ -6,6 +6,7 @@ export type CategoryId =
   | 'tenders'
   | 'helplines'
   | 'finance'
+  | 'transparency'
 
 export interface Resource {
   id: string
@@ -68,6 +69,7 @@ export interface QueryAnalysis {
     | 'job'
     | 'finance'
     | 'stat'
+    | 'record'
     | 'general'
   states: string[]
   years: number[]

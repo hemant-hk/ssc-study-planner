@@ -1,7 +1,7 @@
 import { AskAnswer, Resource } from '@/types/govt'
 import { FACTS, STATE_FACTS, findStateFact } from './facts'
 import { RESOURCES, CATEGORIES } from './resources'
-import { search, analyzeQuery } from './search'
+import { search, analyzeQuery, intentCategory } from './search'
 
 function normalize(q: string): string {
   return q
@@ -123,28 +123,13 @@ export function ask(query: string): AskAnswer {
   const results = search(q, 4)
   if (results.length > 0) {
     const analysis = analyzeQuery(q)
-    const catLabel =
-      analysis.intent !== 'general'
-        ? CATEGORIES[
-            (Object.entries({
-              scheme: 'schemes',
-              data: 'portals',
-              helpline: 'helplines',
-              law: 'laws',
-              tender: 'tenders',
-              job: 'tenders',
-              finance: 'finance',
-              stat: 'stats',
-            }) as [string, keyof typeof CATEGORIES][]).find(
-              ([k]) => k === analysis.intent
-            )?.[1] ?? 'portals'
-          ].name
-        : 'matching'
+    const catId = intentCategory(analysis.intent)
+    const catLabel = catId ? CATEGORIES[catId].name : 'matching'
 
     const top = results[0].resource
     return {
       text: `I don't have a single-number answer for that, but here's the closest official ${catLabel} resource:\n\n${top.title} — ${top.description}`,
-      source: `${top.org}${top.url ? '' : ''}`,
+      source: top.org,
       sourceUrl: top.url,
       related: results.map(r => r.resource),
     }
@@ -166,10 +151,10 @@ function suggestedResources(): Resource[] {
 export const SUGGESTED_PROMPTS: string[] = [
   'What is the literacy rate of Kerala?',
   'How do I file an RTI?',
-  'What is Ayushman Bharat PM-JAY?',
-  'Where can I download census data?',
+  'Where are gazette notifications published?',
+  'Where can I find parliamentary questions?',
+  'What does the CAG do?',
+  'Are declassified files online?',
   'Emergency helpline number?',
-  'What is the Union Budget size?',
   'PM-KISAN eligibility',
-  'How many states in India?',
 ]

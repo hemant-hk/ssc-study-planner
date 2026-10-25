@@ -39,6 +39,11 @@ export const CATEGORIES: Record<
     description: 'Union budget, receipts and public finance data',
     icon: 'indian-rupee',
   },
+  transparency: {
+    name: 'Transparency & Records',
+    description: 'RTI disclosures, parliamentary records, gazette, archives & audit reports',
+    icon: 'scroll',
+  },
 }
 
 export const CATEGORY_ORDER: CategoryId[] = [
@@ -46,6 +51,7 @@ export const CATEGORY_ORDER: CategoryId[] = [
   'portals',
   'stats',
   'laws',
+  'transparency',
   'tenders',
   'helplines',
   'finance',
@@ -339,7 +345,7 @@ export const RESOURCES: Resource[] = [
     title: 'RTI Online — File an Information Request',
     description:
       'File Right to Information applications and first appeals online with fee payment and tracking.',
-    category: 'laws',
+    category: 'transparency',
     org: 'Department of Personnel & Training',
     url: 'https://rtionline.gov.in',
     tags: ['rti', 'transparency', 'application', 'appeal'],
@@ -537,6 +543,129 @@ export const RESOURCES: Resource[] = [
     url: 'https://www.sebi.gov.in',
     tags: ['markets', 'investor', 'filings'],
     hint: 'Market data',
+  },
+  {
+    id: 'cga-accounts',
+    title: 'CGA — Finance & Revenue Accounts',
+    description:
+      'Monthly and annual finance accounts of the Union, appropriation accounts and cash balances.',
+    category: 'finance',
+    org: 'Controller General of Accounts',
+    url: 'https://cga.nic.in',
+    tags: ['accounts', 'treasury', 'expenditure', 'fiscal'],
+    hint: 'Union accounts',
+  },
+
+  // ---- Transparency & Records ----
+  {
+    id: 'cic',
+    title: 'Central Information Commission (CIC)',
+    description:
+      'Appellate authority under the RTI Act: second appeals, complaints, orders and a public registry of information officers.',
+    category: 'transparency',
+    org: 'Central Information Commission',
+    url: 'https://cic.gov.in',
+    tags: ['rti', 'appeal', 'disclosure', 'transparency'],
+    hint: 'RTI appeals',
+  },
+  {
+    id: 'rti-act',
+    title: 'RTI Act 2005 & DoPT Guidelines',
+    description:
+      'Full text of the Right to Information Act, rules, manuals and Section 4(1)(b) proactive-disclosure instructions for departments.',
+    category: 'transparency',
+    org: 'Department of Personnel & Training',
+    url: 'https://rti.gov.in',
+    tags: ['rti', 'act', 'disclosure', 'manuals'],
+    hint: 'RTI Act text',
+  },
+  {
+    id: 'sansad',
+    title: 'Sansad — Parliament of India',
+    description:
+      'Unified portal for Lok Sabha & Rajya Sabha: questions, debate records, committees, member profiles and session schedules.',
+    category: 'transparency',
+    org: 'Parliament of India',
+    url: 'https://sansad.in',
+    tags: ['parliament', 'questions', 'debates', 'committees'],
+    hint: 'Parliament data',
+  },
+  {
+    id: 'loksabha',
+    title: 'Lok Sabha — Questions & Debates',
+    description:
+      'Question Hour questions, debate transcripts, stenographed records and member attendance of the Lower House.',
+    category: 'transparency',
+    org: 'Lok Sabha Secretariat',
+    url: 'https://loksabha.nic.in',
+    tags: ['lok sabha', 'question hour', 'debates', 'attendance'],
+    hint: 'Lower house',
+  },
+  {
+    id: 'rajyasabha',
+    title: 'Rajya Sabha — Records & Questions',
+    description:
+      'Upper-house questions, debate records, committee work and legislative business proceedings.',
+    category: 'transparency',
+    org: 'Rajya Sabha Secretariat',
+    url: 'https://rajyasabha.nic.in',
+    tags: ['rajya sabha', 'questions', 'debates'],
+    hint: 'Upper house',
+  },
+  {
+    id: 'egazette',
+    title: 'e-Gazette of India',
+    description:
+      'Official notifications, ordinances, rules and government orders as published in the Gazette — searchable by part and date.',
+    category: 'transparency',
+    org: 'Department of Publication, MoHUA',
+    url: 'https://egazette.gov.in',
+    tags: ['gazette', 'notification', 'rules', 'ordinance'],
+    hint: 'Official notifications',
+  },
+  {
+    id: 'pib',
+    title: 'PIB Press Releases',
+    description:
+      'Official announcements, policy rollouts and ministerial statements published daily by the Press Information Bureau.',
+    category: 'transparency',
+    org: 'Press Information Bureau',
+    url: 'https://pib.gov.in',
+    tags: ['press release', 'announcements', 'policy', 'media'],
+    hint: 'Govt announcements',
+  },
+  {
+    id: 'national-archives',
+    title: 'National Archives of India',
+    description:
+      'Digitised historical records, public-records rules and declassified government collections open to researchers.',
+    category: 'transparency',
+    org: 'National Archives of India, Ministry of Culture',
+    url: 'https://nationalarchives.nic.in',
+    tags: ['archives', 'declassified', 'history', 'records'],
+    hint: 'Historical records',
+  },
+  {
+    id: 'netaji-files',
+    title: 'Declassified Netaji Files',
+    description:
+      'The government-released declassified files on Netaji Subhas Chandra Bose — fully browsable online.',
+    category: 'transparency',
+    org: 'National Archives of India / Government of India',
+    url: 'https://netajifiles.nic.in',
+    tags: ['declassified', 'netaji', 'history', 'files'],
+    hint: 'Declassified files',
+  },
+  {
+    id: 'cag-reports-library',
+    title: 'CAG Audit Reports & Committee Report Library',
+    description:
+      'Cross-index of audit reports laid before Parliament and standing-committee reports, hosted with the C&AG publication series.',
+    category: 'transparency',
+    org: 'Comptroller & Auditor General of India',
+    url: 'https://cag.gov.in',
+    tags: ['audit', 'cag', 'committee', 'reports'],
+    hint: 'Audit reports',
   },
 ]
 

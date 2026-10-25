@@ -14,9 +14,23 @@ const INTENT_KEYWORDS: Record<Exclude<QueryAnalysis['intent'], 'general'>, strin
   helpline: ['helpline', 'number', 'toll free', 'call', 'emergency', 'dial', 'contact no', 'help line'],
   law: ['law', 'act', 'rule', 'legal', 'rti', 'bill', 'judgment', 'court', 'constitution', 'section'],
   tender: ['tender', 'procurement', 'bid', 'rfp', 'quotation', 'gem', 'contract'],
-  job: ['job', 'vacancy', 'recruitment', 'employment', 'exam', 'form', 'notification', 'unemployment'],
+  job: ['job', 'vacancy', 'recruitment', 'employment', 'exam', 'form'],
   finance: ['budget', 'tax', 'gst', 'finance', 'interest rate', 'rbi', 'deficit', 'receipt', 'expenditure'],
-  stat: ['population', 'literacy', 'census', 'gdp', 'rate', 'percent', '%', 'growth', 'index'],
+  stat: ['population', 'literacy', 'census', 'gdp', 'rate', 'percent', '%', 'growth', 'index', 'unemployment'],
+  record: [
+    'gazette',
+    'parliament',
+    'sansad',
+    'debate',
+    'archive',
+    'declassified',
+    'disclosure',
+    'committee',
+    'press release',
+    'lok sabha',
+    'rajya sabha',
+    'question hour',
+  ],
 }
 
 const CATEGORY_HINTS: Record<CategoryId, string[]> = {
@@ -27,6 +41,25 @@ const CATEGORY_HINTS: Record<CategoryId, string[]> = {
   tenders: ['tender', 'procurement', 'bid'],
   helplines: ['helpline', 'emergency', 'call', 'number'],
   finance: ['budget', 'tax', 'finance', 'banking', 'market'],
+  transparency: ['gazette', 'parliament', 'archive', 'declassified', 'disclosure'],
+}
+
+const INTENT_CATEGORY: Partial<Record<QueryAnalysis['intent'], CategoryId>> = {
+  scheme: 'schemes',
+  data: 'portals',
+  helpline: 'helplines',
+  law: 'laws',
+  tender: 'tenders',
+  job: 'tenders',
+  finance: 'finance',
+  stat: 'stats',
+  record: 'transparency',
+}
+
+export function intentCategory(
+  intent: QueryAnalysis['intent']
+): CategoryId | null {
+  return INTENT_CATEGORY[intent] ?? null
 }
 
 export function analyzeQuery(query: string): QueryAnalysis {
@@ -35,7 +68,8 @@ export function analyzeQuery(query: string): QueryAnalysis {
     .split(/[^a-z0-9₹%]+/)
     .filter(t => t.length > 1 && !STOPWORDS.has(t))
 
-  // intent: score each bucket by keyword hits (word-boundary prefixed match)
+  // intent: score each bucket by keyword hits (word-boundary prefixed match),
+  // weighted by word count + keyword length so specific terms beat generic ones
   const hasKeyword = (word: string): boolean => {
     const esc = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     return new RegExp(`(?:^|[^a-z0-9])${esc}`).test(q)
@@ -45,7 +79,7 @@ export function analyzeQuery(query: string): QueryAnalysis {
   for (const [key, words] of Object.entries(INTENT_KEYWORDS)) {
     const hits = words
       .filter(hasKeyword)
-      .reduce((n, w) => n + w.split(' ').length, 0)
+      .reduce((n, w) => n + w.split(' ').length + Math.floor(w.length / 6), 0)
     if (hits > best) {
       best = hits
       intent = key as QueryAnalysis['intent']
@@ -124,17 +158,7 @@ function scoreResource(
   }
 
   // intent → category affinity bonus
-  const intentCategory: Partial<Record<QueryAnalysis['intent'], CategoryId>> = {
-    scheme: 'schemes',
-    data: 'portals',
-    helpline: 'helplines',
-    law: 'laws',
-    tender: 'tenders',
-    job: 'tenders',
-    finance: 'finance',
-    stat: 'stats',
-  }
-  const preferred = intentCategory[analysis.intent]
+  const preferred = intentCategory(analysis.intent)
   if (preferred && resource.category === preferred) score += 2
 
   // entity match bonus

@@ -7,6 +7,7 @@ import {
   Landmark,
   MessageSquareText,
   Phone,
+  ScrollText,
 } from 'lucide-react'
 import { SearchBar } from '@/components/search/SearchBar'
 import { CATEGORIES, CATEGORY_ORDER, RESOURCES } from '@/lib/resources'
@@ -20,6 +21,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   briefcase: Database,
   phone: Phone,
   'indian-rupee': BarChart3,
+  scroll: ScrollText,
 }
 
 const HIGHLIGHTS = [

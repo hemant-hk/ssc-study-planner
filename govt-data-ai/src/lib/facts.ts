@@ -176,6 +176,103 @@ export const FACTS: Fact[] = [
     sourceUrl: 'https://www.mygov.in',
     asOf: 'Current',
   },
+  {
+    id: 'f-cic',
+    match: [
+      'central information commission',
+      'cic',
+      'rti appeal',
+      'who hears rti',
+      'second appeal rti',
+    ],
+    question: 'Who hears RTI appeals?',
+    answer:
+      'A first appeal goes to the First Appellate Authority inside the department; a second appeal is heard by the Central Information Commission (CIC), whose orders are binding on the public authority.',
+    source: 'Central Information Commission',
+    sourceUrl: 'https://cic.gov.in',
+    asOf: 'RTI Act 2005',
+  },
+  {
+    id: 'f-gazette',
+    match: [
+      'gazette',
+      'gazette notification',
+      'where to find notification',
+      'official notification',
+      'egazette',
+    ],
+    question: 'Where are gazette notifications published?',
+    answer:
+      'The e-Gazette portal (egazette.gov.in) publishes the Gazette of India — Parts I, II and III — including rules, ordinances and government orders, searchable by part and date.',
+    source: 'Department of Publication, MoHUA',
+    sourceUrl: 'https://egazette.gov.in',
+    asOf: 'Current',
+  },
+  {
+    id: 'f-cag',
+    match: [
+      'what is cag',
+      'comptroller and auditor general',
+      'cag report',
+      'who audits government',
+      'audit reports',
+    ],
+    question: 'What does the CAG do?',
+    answer:
+      'The Comptroller and Auditor General of India audits all government receipts and expenditure, and lays fiscal, performance and compliance audit reports before Parliament and the state legislatures.',
+    source: 'C&AG of India',
+    sourceUrl: 'https://cag.gov.in',
+    asOf: 'Current',
+  },
+  {
+    id: 'f-parliament-questions',
+    match: [
+      'parliament questions',
+      'question hour',
+      'lok sabha questions',
+      'parliament debates',
+      'sansad',
+      'where to find debates',
+    ],
+    question: 'Where can I read parliamentary questions and debates?',
+    answer:
+      'Sansad.in is the unified Parliament portal for questions, debate records and committees; the Lok Sabha and Rajya Sabha secretariat sites publish question-hour records, attendance and session schedules.',
+    source: 'Parliament of India',
+    sourceUrl: 'https://sansad.in',
+    asOf: 'Current',
+  },
+  {
+    id: 'f-declassified',
+    match: [
+      'declassified files',
+      'declassified records',
+      'national archives',
+      'historical government records',
+      'netaji files',
+    ],
+    question: 'Are declassified government files available online?',
+    answer:
+      'Yes — the National Archives of India digitises public records and declassified collections, including the government-released declassified Netaji files, all browsable online.',
+    source: 'National Archives of India',
+    sourceUrl: 'https://nationalarchives.nic.in',
+    asOf: 'Current',
+  },
+  {
+    id: 'f-proactive-disclosure',
+    match: [
+      'proactive disclosure',
+      'section 4',
+      'mandatory disclosure',
+      'disclosure rules',
+      'rti section 4 1 b',
+    ],
+    question: 'What is proactive disclosure under the RTI Act?',
+    answer:
+      'Section 4(1)(b) requires every public authority to publish categories of information — powers, duties, decisions, budgets, contracts and beneficiary schemes — proactively on its website and in a public information manual, without anyone having to file an RTI.',
+    source: 'RTI Act 2005, DoPT',
+    sourceUrl: 'https://rti.gov.in',
+    asOf: 'RTI Act 2005',
+  },
 ]
 
 export function findStateFact(name: string): StateFact | undefined {

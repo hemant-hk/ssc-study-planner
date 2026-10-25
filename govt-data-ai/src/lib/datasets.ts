@@ -202,6 +202,82 @@ export const DATASETS: Dataset[] = [
     tags: ['international', 'indicators', 'development'],
     region: 'Global',
   },
+  {
+    id: 'ds-parliament-questions',
+    title: 'Parliament Questions Database',
+    description:
+      'Lok Sabha & Rajya Sabha questions with ministerial answers, filterable by ministry and session.',
+    org: 'Parliament of India (Sansad)',
+    format: 'Web',
+    url: 'https://sansad.in',
+    tags: ['parliament', 'questions', 'debates'],
+    region: 'India',
+  },
+  {
+    id: 'ds-gazette',
+    title: 'Gazette Notifications (e-Gazette)',
+    description:
+      'Searchable Gazette of India — Parts I, II and III: rules, ordinances, orders and public notices by date.',
+    org: 'Department of Publication, MoHUA',
+    format: 'Web',
+    url: 'https://egazette.gov.in',
+    tags: ['gazette', 'notification', 'orders'],
+    region: 'India',
+  },
+  {
+    id: 'ds-rti-statistics',
+    title: 'RTI Applications & Replies Statistics',
+    description:
+      'Annual counts of RTI applications received, disposed and pending across central departments.',
+    org: 'DoPT / Central Information Commission',
+    format: 'CSV',
+    url: 'https://rti.gov.in',
+    tags: ['rti', 'disclosure', 'statistics'],
+    region: 'India',
+  },
+  {
+    id: 'ds-cag-reports',
+    title: 'CAG Audit Report Archive',
+    description:
+      'Performance, compliance and fiscal audit reports of union and state governments.',
+    org: 'Comptroller & Auditor General of India',
+    format: 'PDF',
+    url: 'https://cag.gov.in',
+    tags: ['audit', 'reports', 'finance'],
+    region: 'India',
+  },
+  {
+    id: 'ds-pib-releases',
+    title: 'PIB Press Release Archive',
+    description: 'Day-wise official press releases and government announcements.',
+    org: 'Press Information Bureau',
+    format: 'Web',
+    url: 'https://pib.gov.in',
+    tags: ['press', 'announcements', 'media'],
+    region: 'India',
+  },
+  {
+    id: 'ds-declassified-archives',
+    title: 'Declassified Records Index',
+    description:
+      'Digitised public records and declassified government collections open to researchers.',
+    org: 'National Archives of India',
+    format: 'Web',
+    url: 'https://nationalarchives.nic.in',
+    tags: ['archives', 'declassified', 'history'],
+    region: 'India',
+  },
+  {
+    id: 'ds-committee-reports',
+    title: 'Department-Related Standing Committee Reports',
+    description:
+      'Report PDFs of parliamentary standing committees on ministries — findings, recommendations and action-taken reports.',
+    org: 'Parliament of India',
+    format: 'PDF',
+    url: 'https://sansad.in',
+    tags: ['committee', 'parliament', 'reports'],
+    region: 'India',
+  },
 ]
 
 export const DATASET_FORMATS = ['API', 'CSV', 'Dashboard', 'PDF', 'Web'] as const
